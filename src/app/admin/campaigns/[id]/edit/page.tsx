@@ -9,7 +9,7 @@ export default async function EditCampaignPage({
   const { id } = await params;
   return (
     <AdminShell>
-      <CampaignForm mode="edit" campaignId={id} />
+      <CampaignForm mode="edit" campaignId={Number(id)} />
     </AdminShell>
   );
 }

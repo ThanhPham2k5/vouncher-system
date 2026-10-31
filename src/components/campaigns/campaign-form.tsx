@@ -3,15 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import {
-  ArrowLeft,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Rocket,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Rocket, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { CampaignStatusBadge } from "@/components/campaigns/campaign-status-badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import {
   BATCH_TYPE_LABEL,
   CHARSET_LABEL,
@@ -45,52 +36,43 @@ import {
   listRules,
   updateCampaign,
 } from "@/lib/campaigns/service";
+import { campaignInputSchema, toFieldErrors } from "@/lib/campaigns/schemas";
 import type {
   BatchRuleOption,
   BatchType,
-  Campaign,
-  CampaignStatus,
   CampaignInput,
-  CharsetType,
+  CampaignResponse,
+  CampaignStatus,
+  CodeConfig,
   DurationUnit,
   VoucherBatchInput,
 } from "@/lib/campaigns/types";
-import { validateCampaign, type FormErrors } from "@/lib/campaigns/validation";
-import { formatNumber, formatVnd } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 
 interface CampaignFormProps {
   mode: "create" | "edit";
-  campaignId?: string;
+  campaignId?: number;
 }
+
+type FormErrors = Record<string, string>;
 
 function emptyBatch(): VoucherBatchInput {
   return {
     batchType: "GENERIC",
-    ruleId: "",
-    prefix: "",
-    length: 8,
-    charset: "ALPHANUMERIC",
+    ruleId: 0,
     durationValue: 14,
     durationUnit: "DAYS",
-    quotaEmail: 0,
-    quotaWebhook: 0,
+    codeConfig: { prefix: "", length: 8, charset: "ALPHANUMERIC" },
+    distributionChannels: { email: 0, webhook: 0 },
   };
 }
 
 const BLANK_INPUT: CampaignInput = {
-  id: "",
-  name: "",
-  description: "",
+  campaignName: "",
   startTime: "",
   endTime: "",
-  budgetTotal: 0,
-  budgetThreshold: 0,
-  batches: [emptyBatch()],
+  voucherBatches: [emptyBatch()],
 };
-
-function generateCampaignId(): string {
-  return `CAMP_${new Date().getFullYear()}_${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-}
 
 function toLocalInput(date: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -103,26 +85,27 @@ function defaultInput(): CampaignInput {
   const end = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   return {
     ...BLANK_INPUT,
-    id: generateCampaignId(),
     startTime: toLocalInput(now),
     endTime: toLocalInput(end),
-    budgetTotal: 100_000_000,
-    budgetThreshold: 80_000_000,
   };
 }
 
-function toInput(c: Campaign): CampaignInput {
+// Chuyển response của BE sang dạng form (không gửi kèm đếm generated/redeemed)
+function toInput(c: CampaignResponse): CampaignInput {
   return {
-    id: c.id,
-    name: c.name,
-    description: c.description,
+    campaignName: c.campaignName,
     startTime: toInputDateTime(c.startTime),
     endTime: toInputDateTime(c.endTime),
-    budgetTotal: c.budgetTotal,
-    budgetThreshold: c.budgetThreshold,
-    batches: c.batches.map(
-      ({ generatedCount: _g, redeemedCount: _r, ...rest }) => rest,
-    ),
+    status: c.status,
+    voucherBatches: c.voucherBatches.map((b) => ({
+      id: b.id,
+      batchType: b.batchType,
+      ruleId: b.rule.id,
+      durationValue: b.durationValue,
+      durationUnit: b.durationUnit,
+      codeConfig: { ...b.codeConfigJson },
+      distributionChannels: { ...b.distributionChannelsJson },
+    })),
   };
 }
 
@@ -149,7 +132,7 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
       setForm(defaultInput());
       return;
     }
-    if (!campaignId) return;
+    if (campaignId === undefined) return;
 
     let active = true;
     setLoading(true);
@@ -174,9 +157,9 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
     };
   }, [isEdit, campaignId]);
 
-  function setField<K extends keyof CampaignInput>(
+  function setField<K extends "campaignName" | "startTime" | "endTime">(
     key: K,
-    value: CampaignInput[K],
+    value: string,
   ) {
     setForm((f) => ({ ...f, [key]: value }));
   }
@@ -184,18 +167,23 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
   function setBatch(index: number, patch: Partial<VoucherBatchInput>) {
     setForm((f) => ({
       ...f,
-      batches: f.batches.map((b, i) => (i === index ? { ...b, ...patch } : b)),
+      voucherBatches: f.voucherBatches.map((b, i) =>
+        i === index ? { ...b, ...patch } : b,
+      ),
     }));
   }
 
   function addBatch() {
-    setForm((f) => ({ ...f, batches: [...f.batches, emptyBatch()] }));
+    setForm((f) => ({
+      ...f,
+      voucherBatches: [...f.voucherBatches, emptyBatch()],
+    }));
   }
 
   function removeBatch(index: number) {
     setForm((f) => ({
       ...f,
-      batches: f.batches.filter((_, i) => i !== index),
+      voucherBatches: f.voucherBatches.filter((_, i) => i !== index),
     }));
   }
 
@@ -203,22 +191,24 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
     event.preventDefault();
     if (submitting) return;
 
-    const found = validateCampaign(form);
-    setErrors(found);
-    if (Object.keys(found).length > 0) {
+    const parsed = campaignInputSchema.safeParse(form);
+    if (!parsed.success) {
+      setErrors(toFieldErrors(parsed.error));
       toast.error("Vui lòng kiểm tra lại thông tin", {
         description: "Một số trường còn thiếu hoặc không hợp lệ.",
       });
       return;
     }
+    setErrors({});
 
     setSubmitting(true);
     try {
-      const saved = isEdit
-        ? await updateCampaign(form.id, form)
-        : await createCampaign(form);
+      const saved =
+        isEdit && campaignId !== undefined
+          ? await updateCampaign(campaignId, parsed.data)
+          : await createCampaign(parsed.data);
       toast.success(isEdit ? "Đã lưu thay đổi" : "Tạo chiến dịch thành công", {
-        description: `${saved.name} · ${saved.batches.length} lô mã`,
+        description: `${saved.campaignName} · ${saved.voucherBatches.length} lô mã`,
       });
       router.push(`/admin/campaigns/${saved.id}`);
     } catch (err) {
@@ -257,9 +247,14 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
     );
   }
 
+  const cancelHref =
+    isEdit && campaignId !== undefined
+      ? `/admin/campaigns/${campaignId}`
+      : "/admin/campaigns";
   const errorCount = Object.keys(errors).length;
-  const totalQuota = form.batches.reduce(
-    (sum, b) => sum + b.quotaEmail + b.quotaWebhook,
+  const totalQuota = form.voucherBatches.reduce(
+    (sum, b) =>
+      sum + b.distributionChannels.email + b.distributionChannels.webhook,
     0,
   );
 
@@ -267,13 +262,7 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
       <div className="space-y-2">
         <Button asChild variant="ghost" size="sm" className="-ml-3">
-          <Link
-            href={
-              isEdit && campaignId
-                ? `/admin/campaigns/${campaignId}`
-                : "/admin/campaigns"
-            }
-          >
+          <Link href={cancelHref}>
             <ArrowLeft />
             Quay lại
           </Link>
@@ -282,7 +271,7 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
           {isEdit ? "Chỉnh sửa chiến dịch" : "Tạo chiến dịch khuyến mãi mới"}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Thiết lập thông tin chung, ngân sách trần và danh sách lô mã áp dụng.
+          Thiết lập thông tin chung, thời gian và danh sách lô mã áp dụng.
         </p>
       </div>
 
@@ -294,57 +283,16 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
                 1. Thông tin chung & thời gian
               </CardTitle>
               <CardDescription>
-                Định danh, phạm vi thời gian và ngưỡng cảnh báo chi tiêu
+                Tên và phạm vi thời gian của chiến dịch
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <Field
-                label="Mã định danh chiến dịch (Campaign ID)"
-                error={errors.id}
-                hint={
-                  isEdit
-                    ? "Không thể thay đổi sau khi tạo."
-                    : "Duy nhất trên toàn hệ thống, không đổi sau khi kích hoạt."
-                }
-              >
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Input
-                    value={form.id}
-                    disabled={isEdit}
-                    onChange={(e) =>
-                      setField("id", e.target.value.toUpperCase())
-                    }
-                    className="font-mono"
-                    aria-invalid={!!errors.id}
-                  />
-                  {!isEdit && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setField("id", generateCampaignId())}
-                    >
-                      <RefreshCw />
-                      Tạo ngẫu nhiên
-                    </Button>
-                  )}
-                </div>
-              </Field>
-
-              <Field label="Tên chiến dịch" error={errors.name}>
+              <Field label="Tên chiến dịch" error={errors.campaignName}>
                 <Input
-                  value={form.name}
-                  onChange={(e) => setField("name", e.target.value)}
+                  value={form.campaignName}
+                  onChange={(e) => setField("campaignName", e.target.value)}
                   placeholder="ví dụ: Đại tiệc Mua Sắm 11.11"
-                  aria-invalid={!!errors.name}
-                />
-              </Field>
-
-              <Field label="Mô tả chiến dịch" error={errors.description}>
-                <Textarea
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => setField("description", e.target.value)}
-                  placeholder="Mục tiêu và đối tượng áp dụng"
+                  aria-invalid={!!errors.campaignName}
                 />
               </Field>
 
@@ -363,37 +311,6 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
                     value={form.endTime}
                     onChange={(e) => setField("endTime", e.target.value)}
                     aria-invalid={!!errors.endTime}
-                  />
-                </Field>
-              </div>
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field
-                  label="Tổng ngân sách cấp (VND)"
-                  error={errors.budgetTotal}
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.budgetTotal}
-                    onChange={(e) =>
-                      setField("budgetTotal", Number(e.target.value))
-                    }
-                    aria-invalid={!!errors.budgetTotal}
-                  />
-                </Field>
-                <Field
-                  label="Ngưỡng cảnh báo chi tiêu (VND)"
-                  error={errors.budgetThreshold}
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.budgetThreshold}
-                    onChange={(e) =>
-                      setField("budgetThreshold", Number(e.target.value))
-                    }
-                    aria-invalid={!!errors.budgetThreshold}
                   />
                 </Field>
               </div>
@@ -421,17 +338,19 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
-              {errors.batches && (
-                <p className="text-sm text-destructive">{errors.batches}</p>
+              {errors.voucherBatches && (
+                <p className="text-sm text-destructive">
+                  {errors.voucherBatches}
+                </p>
               )}
-              {form.batches.map((batch, index) => (
+              {form.voucherBatches.map((batch, index) => (
                 <BatchEditor
                   key={index}
                   index={index}
                   batch={batch}
                   rules={rules}
                   errors={errors}
-                  canRemove={form.batches.length > 1}
+                  canRemove={form.voucherBatches.length > 1}
                   onChange={(patch) => setBatch(index, patch)}
                   onRemove={() => removeBatch(index)}
                 />
@@ -449,15 +368,11 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
               <SummaryRow label="Trạng thái khi lưu">
                 <CampaignStatusBadge status={isEdit ? status : "ACTIVE"} />
               </SummaryRow>
-              <SummaryRow label="Số lô mã">{form.batches.length} lô</SummaryRow>
+              <SummaryRow label="Số lô mã">
+                {form.voucherBatches.length} lô
+              </SummaryRow>
               <SummaryRow label="Tổng quota kênh">
                 {formatNumber(totalQuota)} mã
-              </SummaryRow>
-              <SummaryRow label="Ngân sách cấp">
-                {formatVnd(form.budgetTotal || 0)}
-              </SummaryRow>
-              <SummaryRow label="Ngưỡng cảnh báo">
-                {formatVnd(form.budgetThreshold || 0)}
               </SummaryRow>
 
               {errorCount > 0 && (
@@ -478,15 +393,7 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
                   {isEdit ? "Lưu thay đổi" : "Khởi tạo chiến dịch & sinh lô mã"}
                 </Button>
                 <Button asChild variant="outline" className="w-full">
-                  <Link
-                    href={
-                      isEdit && campaignId
-                        ? `/admin/campaigns/${campaignId}`
-                        : "/admin/campaigns"
-                    }
-                  >
-                    Hủy bỏ
-                  </Link>
+                  <Link href={cancelHref}>Hủy bỏ</Link>
                 </Button>
               </div>
             </CardContent>
@@ -516,7 +423,17 @@ function BatchEditor({
   onChange,
   onRemove,
 }: BatchEditorProps) {
-  const key = (field: string) => `batches.${index}.${field}`;
+  // Lỗi zod có đường dẫn đầy đủ, ví dụ "voucherBatches.0.codeConfig.prefix"
+  const err = (path: string) => errors[`voucherBatches.${index}.${path}`];
+
+  const setCode = (patch: Partial<CodeConfig>) =>
+    onChange({ codeConfig: { ...batch.codeConfig, ...patch } });
+  const setChannels = (
+    patch: Partial<VoucherBatchInput["distributionChannels"]>,
+  ) =>
+    onChange({
+      distributionChannels: { ...batch.distributionChannels, ...patch },
+    });
 
   return (
     <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
@@ -542,7 +459,7 @@ function BatchEditor({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Loại lô (batch type)">
+        <Field label="Loại lô (batchType)" error={err("batchType")}>
           <Select
             value={batch.batchType}
             onValueChange={(v) => onChange({ batchType: v as BatchType })}
@@ -560,17 +477,17 @@ function BatchEditor({
           </Select>
         </Field>
 
-        <Field label="Quy tắc áp dụng (rule)" error={errors[key("ruleId")]}>
+        <Field label="Quy tắc áp dụng (rule)" error={err("ruleId")}>
           <Select
-            value={batch.ruleId}
-            onValueChange={(v) => onChange({ ruleId: v })}
+            value={batch.ruleId ? String(batch.ruleId) : ""}
+            onValueChange={(v) => onChange({ ruleId: Number(v) })}
           >
-            <SelectTrigger aria-invalid={!!errors[key("ruleId")]}>
+            <SelectTrigger aria-invalid={!!err("ruleId")}>
               <SelectValue placeholder="Chọn quy tắc" />
             </SelectTrigger>
             <SelectContent>
               {rules.map((r) => (
-                <SelectItem key={r.id} value={r.id} description={r.id}>
+                <SelectItem key={r.id} value={String(r.id)}>
                   {r.name}
                 </SelectItem>
               ))}
@@ -578,46 +495,50 @@ function BatchEditor({
           </Select>
         </Field>
 
-        <Field label="Tiền tố mã (prefix)" error={errors[key("prefix")]}>
+        <Field label="Tiền tố mã (prefix)" error={err("codeConfig.prefix")}>
           <Input
-            value={batch.prefix}
-            onChange={(e) => onChange({ prefix: e.target.value.toUpperCase() })}
+            value={batch.codeConfig.prefix}
+            onChange={(e) => setCode({ prefix: e.target.value.toUpperCase() })}
             placeholder="ví dụ: TECH20_"
             className="font-mono"
-            aria-invalid={!!errors[key("prefix")]}
+            aria-invalid={!!err("codeConfig.prefix")}
           />
         </Field>
 
-        <Field label="Độ dài chuỗi ngẫu nhiên" error={errors[key("length")]}>
+        <Field label="Độ dài chuỗi ngẫu nhiên" error={err("codeConfig.length")}>
           <Input
             type="number"
             min={6}
             max={16}
-            value={batch.length}
-            onChange={(e) => onChange({ length: Number(e.target.value) })}
-            aria-invalid={!!errors[key("length")]}
+            value={batch.codeConfig.length}
+            onChange={(e) => setCode({ length: Number(e.target.value) })}
+            aria-invalid={!!err("codeConfig.length")}
           />
         </Field>
 
-        <Field label="Bộ ký tự (charset)">
+        <Field label="Bộ ký tự (charset)" error={err("codeConfig.charset")}>
           <Select
-            value={batch.charset}
-            onValueChange={(v) => onChange({ charset: v as CharsetType })}
+            value={batch.codeConfig.charset}
+            onValueChange={(v) =>
+              setCode({ charset: v as CodeConfig["charset"] })
+            }
           >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(Object.keys(CHARSET_LABEL) as CharsetType[]).map((c) => (
-                <SelectItem key={c} value={c}>
-                  {CHARSET_LABEL[c]}
-                </SelectItem>
-              ))}
+              {(Object.keys(CHARSET_LABEL) as CodeConfig["charset"][]).map(
+                (c) => (
+                  <SelectItem key={c} value={c}>
+                    {CHARSET_LABEL[c]}
+                  </SelectItem>
+                ),
+              )}
             </SelectContent>
           </Select>
         </Field>
 
-        <Field label="Thời hạn sử dụng" error={errors[key("durationValue")]}>
+        <Field label="Thời hạn sử dụng" error={err("durationValue")}>
           <div className="flex gap-2">
             <Input
               type="number"
@@ -626,7 +547,7 @@ function BatchEditor({
               onChange={(e) =>
                 onChange({ durationValue: Number(e.target.value) })
               }
-              aria-invalid={!!errors[key("durationValue")]}
+              aria-invalid={!!err("durationValue")}
               className="flex-1"
             />
             <div className="w-32">
@@ -651,22 +572,30 @@ function BatchEditor({
           </div>
         </Field>
 
-        <Field label="Quota Email" error={errors[key("quota")]}>
+        <Field
+          label="Quota Email"
+          error={
+            err("distributionChannels.email") ?? err("distributionChannels")
+          }
+        >
           <Input
             type="number"
             min={0}
-            value={batch.quotaEmail}
-            onChange={(e) => onChange({ quotaEmail: Number(e.target.value) })}
-            aria-invalid={!!errors[key("quota")]}
+            value={batch.distributionChannels.email}
+            onChange={(e) => setChannels({ email: Number(e.target.value) })}
+            aria-invalid={!!err("distributionChannels")}
           />
         </Field>
 
-        <Field label="Quota Webhook">
+        <Field
+          label="Quota Webhook"
+          error={err("distributionChannels.webhook")}
+        >
           <Input
             type="number"
             min={0}
-            value={batch.quotaWebhook}
-            onChange={(e) => onChange({ quotaWebhook: Number(e.target.value) })}
+            value={batch.distributionChannels.webhook}
+            onChange={(e) => setChannels({ webhook: Number(e.target.value) })}
           />
         </Field>
       </div>

@@ -24,21 +24,25 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  BATCH_STATUS_LABEL,
   BATCH_TYPE_LABEL,
   CHARSET_LABEL,
   DURATION_LABEL,
   formatDateTime,
 } from "@/lib/campaigns/format";
 import { getCampaign, setCampaignStatus } from "@/lib/campaigns/service";
-import type { Campaign, CampaignStatus } from "@/lib/campaigns/types";
-import { formatNumber, formatPercent, formatVnd } from "@/lib/format";
+import type { CampaignResponse } from "@/lib/campaigns/types";
+import { formatNumber, formatPercent } from "@/lib/format";
+import { PaginationBar } from "@/components/ui/pagination-bar";
+import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 
-export function CampaignDetail({ campaignId }: { campaignId: string }) {
-  const [campaign, setCampaign] = useState<Campaign | null>(null);
+export function CampaignDetail({ campaignId }: { campaignId: number }) {
+  const [campaign, setCampaign] = useState<CampaignResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [batchPage, setBatchPage] = useState(1);
 
   useEffect(() => {
     let active = true;
@@ -60,7 +64,10 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     };
   }, [campaignId]);
 
-  async function changeStatus(next: CampaignStatus, notifyWebhook = false) {
+  async function changeStatus(
+    next: "ACTIVE" | "PAUSED",
+    notifyWebhook = false,
+  ) {
     if (!campaign) return;
     setBusy(true);
     try {
@@ -76,8 +83,10 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
             : undefined,
         },
       );
-    } catch {
-      toast.error("Không cập nhật được trạng thái");
+    } catch (err) {
+      toast.error("Không cập nhật được trạng thái", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setBusy(false);
       setPauseOpen(false);
@@ -103,7 +112,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
           <p className="font-semibold">Không tìm thấy chiến dịch</p>
           <p className="text-sm text-muted-foreground">
-            Chiến dịch {campaignId} có thể đã bị xóa hoặc không tồn tại.
+            Chiến dịch #{campaignId} có thể đã bị xóa hoặc không tồn tại.
           </p>
           <Button asChild variant="outline">
             <Link href="/admin/campaigns">
@@ -116,16 +125,26 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     );
   }
 
-  const remaining = campaign.budgetTotal - campaign.budgetSpent;
-  const spentPct =
-    campaign.budgetTotal === 0
-      ? 0
-      : (campaign.budgetSpent / campaign.budgetTotal) * 100;
-  const thresholdPct =
-    campaign.budgetTotal === 0
-      ? 0
-      : (campaign.budgetThreshold / campaign.budgetTotal) * 100;
-  const overThreshold = campaign.budgetSpent >= campaign.budgetThreshold;
+  const generated = campaign.voucherBatches.reduce(
+    (sum, b) => sum + b.generatedCount,
+    0,
+  );
+  const redeemed = campaign.voucherBatches.reduce(
+    (sum, b) => sum + b.redeemedCount,
+    0,
+  );
+  const usedPct = generated === 0 ? 0 : (redeemed / generated) * 100;
+  const BATCH_PAGE_SIZE = 5;
+  const batchPageCount = pageCountOf(
+    campaign.voucherBatches.length,
+    BATCH_PAGE_SIZE,
+  );
+  const safeBatchPage = clampPage(batchPage, batchPageCount);
+  const batchItems = paginate(
+    campaign.voucherBatches,
+    safeBatchPage,
+    BATCH_PAGE_SIZE,
+  );
 
   return (
     <div className="space-y-6">
@@ -140,7 +159,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">
-              {campaign.name}
+              {campaign.campaignName}
             </h1>
             <CampaignStatusBadge status={campaign.status} />
           </div>
@@ -192,12 +211,12 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <InfoItem
-              label="Mã định danh hệ thống"
+              label="ID chiến dịch"
               value={<span className="font-mono">{campaign.id}</span>}
             />
             <InfoItem
-              label="Admin phụ trách"
-              value={<span className="font-mono">{campaign.adminId}</span>}
+              label="Admin tạo"
+              value={<span className="font-mono">#{campaign.admin.id}</span>}
             />
             <InfoItem
               label="Bắt đầu"
@@ -207,73 +226,32 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               label="Kết thúc"
               value={formatDateTime(campaign.endTime)}
             />
-            <div className="sm:col-span-2">
-              <InfoItem
-                label="Mô tả nghiệp vụ & mục tiêu"
-                value={campaign.description || "Chưa có mô tả"}
-              />
-            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Giám sát ngân sách</CardTitle>
+            <CardTitle className="text-base">Tiến độ sử dụng</CardTitle>
             <CardDescription>
-              Chi tiêu thực tế so với hạn mức cấp phát
+              Số mã đã dùng so với số mã đã sinh
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div>
-              <p className="text-sm text-muted-foreground">
-                Đã chi / Tiêu dùng thực tế
-              </p>
+              <p className="text-sm text-muted-foreground">Mã đã sử dụng</p>
               <p className="text-2xl font-bold tabular-nums">
-                {formatVnd(campaign.budgetSpent)}
+                {formatNumber(redeemed)}
               </p>
               <p className="text-xs text-muted-foreground">
-                Tương đương {formatPercent(spentPct)} trên tổng ngân sách
+                trên {formatNumber(generated)} mã đã sinh (
+                {formatPercent(usedPct)})
               </p>
             </div>
-
-            <div className="space-y-2">
-              <div className="relative h-2 w-full rounded-full bg-muted">
-                <div
-                  className={`h-2 rounded-full ${overThreshold ? "bg-amber-500" : "bg-primary"}`}
-                  style={{ width: `${Math.min(100, spentPct)}%` }}
-                />
-                <div
-                  className="absolute -top-1 h-4 w-0.5 bg-destructive"
-                  style={{ left: `${thresholdPct}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>0 ₫</span>
-                <span className="text-destructive">
-                  Ngưỡng: {formatVnd(campaign.budgetThreshold)}
-                </span>
-                <span>{formatVnd(campaign.budgetTotal)}</span>
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-muted/60 p-4 text-sm">
-              <p
-                className={
-                  overThreshold
-                    ? "font-medium text-amber-600 dark:text-amber-400"
-                    : "font-medium text-emerald-600 dark:text-emerald-400"
-                }
-              >
-                {overThreshold
-                  ? "Đã vượt ngưỡng cảnh báo"
-                  : "Trong ngưỡng an toàn"}
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                Ngân sách còn lại:{" "}
-                <span className="font-semibold text-foreground">
-                  {formatVnd(Math.max(0, remaining))}
-                </span>
-              </p>
+            <div className="h-2 w-full rounded-full bg-muted">
+              <div
+                className="h-2 rounded-full bg-primary"
+                style={{ width: `${Math.min(100, usedPct)}%` }}
+              />
             </div>
           </CardContent>
         </Card>
@@ -302,27 +280,33 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {campaign.batches.map((b) => {
-                const redeemedPct =
+              {batchItems.map((b) => {
+                const batchPct =
                   b.generatedCount === 0
                     ? 0
                     : (b.redeemedCount / b.generatedCount) * 100;
                 return (
                   <TableRow key={b.id}>
                     <TableCell className="font-mono text-xs font-semibold">
-                      {b.id}
+                      #{b.id}
+                      <p className="font-sans text-xs font-normal text-muted-foreground">
+                        {BATCH_STATUS_LABEL[b.status]}
+                      </p>
                     </TableCell>
                     <TableCell className="text-sm">
                       {BATCH_TYPE_LABEL[b.batchType]}
                     </TableCell>
                     <TableCell>
-                      <p className="font-mono text-sm">{b.prefix}</p>
+                      <p className="font-mono text-sm">
+                        {b.codeConfigJson.prefix}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {b.length} ký tự · {CHARSET_LABEL[b.charset]}
+                        {b.codeConfigJson.length} ký tự ·{" "}
+                        {CHARSET_LABEL[b.codeConfigJson.charset]}
                       </p>
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      {b.ruleId}
+                      Rule #{b.rule.id}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1.5">
@@ -332,20 +316,25 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                             {formatNumber(b.generatedCount)}
                           </span>
                           <span className="text-muted-foreground">
-                            {formatPercent(redeemedPct)}
+                            {formatPercent(batchPct)}
                           </span>
                         </div>
                         <div className="h-1.5 w-full rounded-full bg-muted">
                           <div
                             className="h-1.5 rounded-full bg-primary"
-                            style={{ width: `${redeemedPct}%` }}
+                            style={{ width: `${batchPct}%` }}
                           />
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-xs">
-                      <p>Email: {formatNumber(b.quotaEmail)}</p>
-                      <p>Webhook: {formatNumber(b.quotaWebhook)}</p>
+                      <p>
+                        Email: {formatNumber(b.distributionChannelsJson.email)}
+                      </p>
+                      <p>
+                        Webhook:{" "}
+                        {formatNumber(b.distributionChannelsJson.webhook)}
+                      </p>
                     </TableCell>
                     <TableCell className="text-sm">
                       {b.durationValue}{" "}
@@ -356,6 +345,13 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               })}
             </TableBody>
           </Table>
+          <PaginationBar
+            total={campaign.voucherBatches.length}
+            page={safeBatchPage}
+            pageSize={BATCH_PAGE_SIZE}
+            pageCount={batchPageCount}
+            onPageChange={setBatchPage}
+          />
         </CardContent>
       </Card>
 

@@ -21,14 +21,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDateTime } from "@/lib/campaigns/format";
-import type { Campaign } from "@/lib/campaigns/types";
-import { formatCompactVnd, formatNumber } from "@/lib/format";
+import type { CampaignResponse } from "@/lib/campaigns/types";
+import { formatNumber, formatPercent } from "@/lib/format";
 
 interface CampaignTableProps {
-  campaigns: Campaign[];
-  busyId: string | null;
-  onPause: (campaign: Campaign) => void;
-  onResume: (campaign: Campaign) => void;
+  campaigns: CampaignResponse[];
+  busyId: number | null;
+  onPause: (campaign: CampaignResponse) => void;
+  onResume: (campaign: CampaignResponse) => void;
 }
 
 export function CampaignTable({
@@ -53,22 +53,25 @@ export function CampaignTable({
           <TableHead>Thời gian hiệu lực</TableHead>
           <TableHead>Lô mã</TableHead>
           <TableHead>Quy tắc liên kết</TableHead>
-          <TableHead className="w-56">Ngân sách đã chi</TableHead>
+          <TableHead className="w-56">Mã đã sử dụng</TableHead>
           <TableHead>Trạng thái</TableHead>
           <TableHead className="text-right">Thao tác</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {campaigns.map((c) => {
-          const issued = c.batches.reduce(
+          const generated = c.voucherBatches.reduce(
             (sum, b) => sum + b.generatedCount,
             0,
           );
-          const rules = Array.from(new Set(c.batches.map((b) => b.ruleId)));
-          const spentPct =
-            c.budgetTotal === 0
-              ? 0
-              : Math.min(100, (c.budgetSpent / c.budgetTotal) * 100);
+          const redeemed = c.voucherBatches.reduce(
+            (sum, b) => sum + b.redeemedCount,
+            0,
+          );
+          const rules = Array.from(
+            new Set(c.voucherBatches.map((b) => b.rule.id)),
+          );
+          const usedPct = generated === 0 ? 0 : (redeemed / generated) * 100;
           const busy = busyId === c.id;
 
           return (
@@ -78,35 +81,32 @@ export function CampaignTable({
                   href={`/admin/campaigns/${c.id}`}
                   className="font-semibold hover:underline"
                 >
-                  {c.name}
+                  {c.campaignName}
                 </Link>
                 <p className="font-mono text-xs text-muted-foreground">
-                  {c.id}
+                  #{c.id}
                 </p>
               </TableCell>
 
-              <TableCell className="text-sm">
-                <p className="tabular-nums">{formatDateTime(c.startTime)}</p>
-                <p className="tabular-nums text-muted-foreground">
-                  → {formatDateTime(c.endTime)}
-                </p>
+              <TableCell className="whitespace-nowrap text-sm tabular-nums">
+                {formatDateTime(c.startTime)} → {formatDateTime(c.endTime)}
               </TableCell>
 
               <TableCell>
-                <p className="font-semibold">{c.batches.length} lô</p>
+                <p className="font-semibold">{c.voucherBatches.length} lô</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatNumber(issued)} mã đã sinh
+                  {formatNumber(generated)} mã đã sinh
                 </p>
               </TableCell>
 
               <TableCell>
                 <div className="flex flex-wrap gap-1">
-                  {rules.map((rule) => (
+                  {rules.map((ruleId) => (
                     <span
-                      key={rule}
+                      key={ruleId}
                       className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
                     >
-                      {rule}
+                      Rule #{ruleId}
                     </span>
                   ))}
                 </div>
@@ -116,23 +116,22 @@ export function CampaignTable({
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs tabular-nums">
                     <span>
-                      {formatCompactVnd(c.budgetSpent)} /{" "}
-                      {formatCompactVnd(c.budgetTotal)}
+                      {formatNumber(redeemed)} / {formatNumber(generated)}
                     </span>
                     <span className="text-muted-foreground">
-                      {spentPct.toFixed(0)}%
+                      {formatPercent(usedPct)}
                     </span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-muted">
                     <div
-                      className={`h-1.5 rounded-full ${spentPct >= 80 ? "bg-amber-500" : "bg-primary"}`}
-                      style={{ width: `${spentPct}%` }}
+                      className="h-1.5 rounded-full bg-primary"
+                      style={{ width: `${Math.min(100, usedPct)}%` }}
                     />
                   </div>
                 </div>
               </TableCell>
 
-              <TableCell>
+              <TableCell className="whitespace-nowrap">
                 <CampaignStatusBadge status={c.status} />
               </TableCell>
 

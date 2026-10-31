@@ -11,11 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Campaign } from "@/lib/campaigns/types";
+import type { CampaignResponse } from "@/lib/campaigns/types";
 import { formatNumber } from "@/lib/format";
 
 interface PauseCampaignDialogProps {
-  campaign: Campaign | null;
+  campaign: CampaignResponse | null;
   busy: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (notifyWebhook: boolean) => void;
@@ -30,7 +30,7 @@ export function PauseCampaignDialog({
 }: PauseCampaignDialogProps) {
   const [notifyWebhook, setNotifyWebhook] = useState(true);
   const issued =
-    campaign?.batches.reduce((sum, b) => sum + b.generatedCount, 0) ?? 0;
+    campaign?.voucherBatches.reduce((sum, b) => sum + b.generatedCount, 0) ?? 0;
 
   return (
     <Dialog
@@ -44,11 +44,12 @@ export function PauseCampaignDialog({
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div className="space-y-1.5">
-              <DialogTitle>Tạm dừng chiến dịch: {campaign?.name}?</DialogTitle>
+              <DialogTitle>
+                Tạm dừng chiến dịch: {campaign?.campaignName}?
+              </DialogTitle>
               <DialogDescription>
                 Các mã voucher thuộc chiến dịch này sẽ tạm thời không thể áp
-                dụng tại giỏ hàng. Bạn có thể kích hoạt lại bất kỳ lúc nào mà
-                không làm mất thông tin điều kiện quy tắc.
+                dụng tại giỏ hàng. Bạn có thể kích hoạt lại bất kỳ lúc nào.
               </DialogDescription>
             </div>
           </div>

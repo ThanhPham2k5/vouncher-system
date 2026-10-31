@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PaginationBar } from "@/components/ui/pagination-bar";
 import {
   Select,
   SelectContent,
@@ -20,19 +21,22 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { STATUS_META } from "@/lib/campaigns/format";
 import { listCampaigns, setCampaignStatus } from "@/lib/campaigns/service";
-import type { Campaign, CampaignStatus } from "@/lib/campaigns/types";
+import type { CampaignResponse, CampaignStatus } from "@/lib/campaigns/types";
+import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 
 type StatusFilter = CampaignStatus | "ALL";
 const STATUS_ORDER: CampaignStatus[] = ["ACTIVE", "PAUSED", "DRAFT", "ENDED"];
 
 export function CampaignsView() {
-  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [pauseTarget, setPauseTarget] = useState<Campaign | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [pauseTarget, setPauseTarget] = useState<CampaignResponse | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
   useEffect(() => {
     let active = true;
@@ -71,15 +75,19 @@ export function CampaignsView() {
       const matchStatus = statusFilter === "ALL" || c.status === statusFilter;
       const matchText =
         !q ||
-        c.name.toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q);
+        c.campaignName.toLowerCase().includes(q) ||
+        String(c.id).includes(q);
       return matchStatus && matchText;
     });
   }, [campaigns, search, statusFilter]);
 
+  const pageCount = pageCountOf(filtered.length, pageSize);
+  const safePage = clampPage(page, pageCount);
+  const pageItems = paginate(filtered, safePage, pageSize);
+
   async function changeStatus(
-    campaign: Campaign,
-    next: CampaignStatus,
+    campaign: CampaignResponse,
+    next: "ACTIVE" | "PAUSED",
     notifyWebhook = false,
   ) {
     setBusyId(campaign.id);
@@ -95,12 +103,12 @@ export function CampaignsView() {
         {
           description: notifyWebhook
             ? "Đã gửi thông báo webhook tới các kênh đối tác."
-            : updated.name,
+            : updated.campaignName,
         },
       );
-    } catch {
+    } catch (err) {
       toast.error("Không cập nhật được trạng thái", {
-        description: "Vui lòng thử lại.",
+        description: err instanceof Error ? err.message : "Vui lòng thử lại.",
       });
     } finally {
       setBusyId(null);
@@ -131,9 +139,12 @@ export function CampaignsView() {
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Tìm theo Campaign ID hoặc tên chiến dịch..."
+              placeholder="Tìm theo ID hoặc tên chiến dịch..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               className="pl-9"
               aria-label="Tìm chiến dịch"
             />
@@ -141,7 +152,10 @@ export function CampaignsView() {
           <div className="sm:w-64">
             <Select
               value={statusFilter}
-              onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+              onValueChange={(v) => {
+                setStatusFilter(v as StatusFilter);
+                setPage(1);
+              }}
             >
               <SelectTrigger aria-label="Lọc theo trạng thái">
                 <SelectValue />
@@ -187,15 +201,18 @@ export function CampaignsView() {
       ) : (
         <Card className="overflow-hidden">
           <CampaignTable
-            campaigns={filtered}
+            campaigns={pageItems}
             busyId={busyId}
             onPause={setPauseTarget}
             onResume={(c) => changeStatus(c, "ACTIVE")}
           />
-          <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-            Hiển thị {filtered.length} trên tổng số {campaigns.length} chiến
-            dịch
-          </div>
+          <PaginationBar
+            total={filtered.length}
+            page={safePage}
+            pageSize={pageSize}
+            pageCount={pageCount}
+            onPageChange={setPage}
+          />
         </Card>
       )}
 
