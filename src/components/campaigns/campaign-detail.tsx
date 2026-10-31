@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PaginationBar } from "@/components/ui/pagination-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -27,17 +28,20 @@ import {
   BATCH_STATUS_LABEL,
   BATCH_TYPE_LABEL,
   CHARSET_LABEL,
+  DISTRIBUTION_LABEL,
   DURATION_LABEL,
   formatDateTime,
+  quotaOf,
 } from "@/lib/campaigns/format";
 import { getCampaign, setCampaignStatus } from "@/lib/campaigns/service";
-import type { CampaignResponse } from "@/lib/campaigns/types";
+import type { CampaignView, Charset } from "@/lib/campaigns/types";
 import { formatNumber, formatPercent } from "@/lib/format";
-import { PaginationBar } from "@/components/ui/pagination-bar";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 
+const BATCH_PAGE_SIZE = 5;
+
 export function CampaignDetail({ campaignId }: { campaignId: number }) {
-  const [campaign, setCampaign] = useState<CampaignResponse | null>(null);
+  const [campaign, setCampaign] = useState<CampaignView | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
@@ -125,26 +129,19 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
     );
   }
 
-  const generated = campaign.voucherBatches.reduce(
+  const generated = campaign.batches.reduce(
     (sum, b) => sum + b.generatedCount,
     0,
   );
-  const redeemed = campaign.voucherBatches.reduce(
+  const redeemed = campaign.batches.reduce(
     (sum, b) => sum + b.redeemedCount,
     0,
   );
   const usedPct = generated === 0 ? 0 : (redeemed / generated) * 100;
-  const BATCH_PAGE_SIZE = 5;
-  const batchPageCount = pageCountOf(
-    campaign.voucherBatches.length,
-    BATCH_PAGE_SIZE,
-  );
+
+  const batchPageCount = pageCountOf(campaign.batches.length, BATCH_PAGE_SIZE);
   const safeBatchPage = clampPage(batchPage, batchPageCount);
-  const batchItems = paginate(
-    campaign.voucherBatches,
-    safeBatchPage,
-    BATCH_PAGE_SIZE,
-  );
+  const batchItems = paginate(campaign.batches, safeBatchPage, BATCH_PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -159,7 +156,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">
-              {campaign.campaignName}
+              {campaign.name}
             </h1>
             <CampaignStatusBadge status={campaign.status} />
           </div>
@@ -216,7 +213,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
             />
             <InfoItem
               label="Admin tạo"
-              value={<span className="font-mono">#{campaign.admin.id}</span>}
+              value={<span className="font-mono">#{campaign.adminId}</span>}
             />
             <InfoItem
               label="Bắt đầu"
@@ -297,16 +294,15 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                       {BATCH_TYPE_LABEL[b.batchType]}
                     </TableCell>
                     <TableCell>
-                      <p className="font-mono text-sm">
-                        {b.codeConfigJson.prefix}
-                      </p>
+                      <p className="font-mono text-sm">{b.codeConfig.prefix}</p>
                       <p className="text-xs text-muted-foreground">
-                        {b.codeConfigJson.length} ký tự ·{" "}
-                        {CHARSET_LABEL[b.codeConfigJson.charset]}
+                        {b.codeConfig.length} ký tự ·{" "}
+                        {CHARSET_LABEL[b.codeConfig.charset as Charset] ??
+                          b.codeConfig.charset}
                       </p>
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      Rule #{b.rule.id}
+                      Rule #{b.ruleId}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1.5">
@@ -329,11 +325,14 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                     </TableCell>
                     <TableCell className="text-xs">
                       <p>
-                        Email: {formatNumber(b.distributionChannelsJson.email)}
+                        {DISTRIBUTION_LABEL.EMAIL}:{" "}
+                        {formatNumber(quotaOf(b.distributionChannels, "EMAIL"))}
                       </p>
                       <p>
-                        Webhook:{" "}
-                        {formatNumber(b.distributionChannelsJson.webhook)}
+                        {DISTRIBUTION_LABEL.WEBHOOK}:{" "}
+                        {formatNumber(
+                          quotaOf(b.distributionChannels, "WEBHOOK"),
+                        )}
                       </p>
                     </TableCell>
                     <TableCell className="text-sm">
@@ -346,7 +345,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
             </TableBody>
           </Table>
           <PaginationBar
-            total={campaign.voucherBatches.length}
+            total={campaign.batches.length}
             page={safeBatchPage}
             pageSize={BATCH_PAGE_SIZE}
             pageCount={batchPageCount}

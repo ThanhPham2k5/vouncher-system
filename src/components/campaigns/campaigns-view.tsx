@@ -21,22 +21,22 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { STATUS_META } from "@/lib/campaigns/format";
 import { listCampaigns, setCampaignStatus } from "@/lib/campaigns/service";
-import type { CampaignResponse, CampaignStatus } from "@/lib/campaigns/types";
+import type { CampaignStatus, CampaignView } from "@/lib/campaigns/types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 
 type StatusFilter = CampaignStatus | "ALL";
-const STATUS_ORDER: CampaignStatus[] = ["ACTIVE", "PAUSED", "DRAFT", "ENDED"];
+const STATUS_ORDER: CampaignStatus[] = ["ACTIVE", "PAUSED", "DRAFT", "EXPIRED"];
+const PAGE_SIZE = 10;
 
 export function CampaignsView() {
-  const [campaigns, setCampaigns] = useState<CampaignResponse[] | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [pauseTarget, setPauseTarget] = useState<CampaignResponse | null>(null);
+  const [pauseTarget, setPauseTarget] = useState<CampaignView | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
 
   useEffect(() => {
     let active = true;
@@ -60,7 +60,7 @@ export function CampaignsView() {
       ACTIVE: 0,
       PAUSED: 0,
       DRAFT: 0,
-      ENDED: 0,
+      EXPIRED: 0,
     };
     campaigns?.forEach((c) => {
       result[c.status] += 1;
@@ -74,19 +74,17 @@ export function CampaignsView() {
     return campaigns.filter((c) => {
       const matchStatus = statusFilter === "ALL" || c.status === statusFilter;
       const matchText =
-        !q ||
-        c.campaignName.toLowerCase().includes(q) ||
-        String(c.id).includes(q);
+        !q || c.name.toLowerCase().includes(q) || String(c.id).includes(q);
       return matchStatus && matchText;
     });
   }, [campaigns, search, statusFilter]);
 
-  const pageCount = pageCountOf(filtered.length, pageSize);
+  const pageCount = pageCountOf(filtered.length, PAGE_SIZE);
   const safePage = clampPage(page, pageCount);
-  const pageItems = paginate(filtered, safePage, pageSize);
+  const pageItems = paginate(filtered, safePage, PAGE_SIZE);
 
   async function changeStatus(
-    campaign: CampaignResponse,
+    campaign: CampaignView,
     next: "ACTIVE" | "PAUSED",
     notifyWebhook = false,
   ) {
@@ -103,7 +101,7 @@ export function CampaignsView() {
         {
           description: notifyWebhook
             ? "Đã gửi thông báo webhook tới các kênh đối tác."
-            : updated.campaignName,
+            : updated.name,
         },
       );
     } catch (err) {
@@ -209,7 +207,7 @@ export function CampaignsView() {
           <PaginationBar
             total={filtered.length}
             page={safePage}
-            pageSize={pageSize}
+            pageSize={PAGE_SIZE}
             pageCount={pageCount}
             onPageChange={setPage}
           />

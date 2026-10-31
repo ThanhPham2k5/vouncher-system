@@ -21,14 +21,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDateTime } from "@/lib/campaigns/format";
-import type { CampaignResponse } from "@/lib/campaigns/types";
+import type { CampaignView } from "@/lib/campaigns/types";
 import { formatNumber, formatPercent } from "@/lib/format";
 
 interface CampaignTableProps {
-  campaigns: CampaignResponse[];
+  campaigns: CampaignView[];
   busyId: number | null;
-  onPause: (campaign: CampaignResponse) => void;
-  onResume: (campaign: CampaignResponse) => void;
+  onPause: (campaign: CampaignView) => void;
+  onResume: (campaign: CampaignView) => void;
 }
 
 export function CampaignTable({
@@ -60,17 +60,15 @@ export function CampaignTable({
       </TableHeader>
       <TableBody>
         {campaigns.map((c) => {
-          const generated = c.voucherBatches.reduce(
+          const generated = c.batches.reduce(
             (sum, b) => sum + b.generatedCount,
             0,
           );
-          const redeemed = c.voucherBatches.reduce(
+          const redeemed = c.batches.reduce(
             (sum, b) => sum + b.redeemedCount,
             0,
           );
-          const rules = Array.from(
-            new Set(c.voucherBatches.map((b) => b.rule.id)),
-          );
+          const rules = Array.from(new Set(c.batches.map((b) => b.ruleId)));
           const usedPct = generated === 0 ? 0 : (redeemed / generated) * 100;
           const busy = busyId === c.id;
 
@@ -81,7 +79,7 @@ export function CampaignTable({
                   href={`/admin/campaigns/${c.id}`}
                   className="font-semibold hover:underline"
                 >
-                  {c.campaignName}
+                  {c.name}
                 </Link>
                 <p className="font-mono text-xs text-muted-foreground">
                   #{c.id}
@@ -93,7 +91,7 @@ export function CampaignTable({
               </TableCell>
 
               <TableCell>
-                <p className="font-semibold">{c.voucherBatches.length} lô</p>
+                <p className="font-semibold">{c.batches.length} lô</p>
                 <p className="text-xs text-muted-foreground">
                   {formatNumber(generated)} mã đã sinh
                 </p>
@@ -184,9 +182,9 @@ export function CampaignTable({
                           Kích hoạt chiến dịch
                         </DropdownMenuItem>
                       )}
-                      {c.status === "ENDED" && (
+                      {c.status === "EXPIRED" && (
                         <DropdownMenuItem disabled>
-                          Chiến dịch đã kết thúc
+                          Chiến dịch đã hết hạn
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>

@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { BATCH_TYPES, CAMPAIGN_STATUSES, DURATION_UNITS } from "./be-types";
+import {
+  BATCH_TYPES,
+  DURATION_UNITS,
+  type DistributionChannels,
+} from "./be-types";
+
+export const CHARSETS = ["ALPHANUMERIC", "UPPERCASE", "NUMERIC"] as const;
+export type Charset = (typeof CHARSETS)[number];
 
 // Chuỗi từ <input type="datetime-local">: "YYYY-MM-DDTHH:mm"
 const dateTimeLocal = z
@@ -14,49 +21,44 @@ export const codeConfigSchema = z.object({
     .int({ error: "Độ dài phải là số nguyên" })
     .min(6, "Độ dài tối thiểu là 6")
     .max(16, "Độ dài tối đa là 16"),
-  charset: z.enum(["ALPHANUMERIC", "UPPERCASE", "NUMERIC"], {
-    error: "Chọn bộ ký tự",
-  }),
+  charset: z.enum(CHARSETS, { error: "Chọn bộ ký tự" }),
 });
 
-export const distributionChannelsSchema = z
+// Form nhập quota theo từng kênh, khi gửi đi sẽ đổi sang distributionChannels.allocations
+export const voucherBatchInputSchema = z
   .object({
-    email: z.int({ error: "Quota phải là số nguyên" }).min(0, "Quota không âm"),
-    webhook: z
+    id: z.int().optional(),
+    batchType: z.enum(BATCH_TYPES, { error: "Chọn loại lô" }),
+    ruleId: z
+      .int({ error: "Chọn quy tắc áp dụng" })
+      .min(1, "Chọn quy tắc áp dụng"),
+    durationValue: z
+      .int({ error: "Thời hạn phải là số nguyên" })
+      .min(1, "Thời hạn tối thiểu là 1"),
+    durationUnit: z.enum(DURATION_UNITS, { error: "Chọn đơn vị thời hạn" }),
+    codeConfig: codeConfigSchema,
+    quotaEmail: z
+      .int({ error: "Quota phải là số nguyên" })
+      .min(0, "Quota không âm"),
+    quotaWebhook: z
       .int({ error: "Quota phải là số nguyên" })
       .min(0, "Quota không âm"),
   })
-  .refine((v) => v.email + v.webhook > 0, {
+  .refine((v) => v.quotaEmail + v.quotaWebhook > 0, {
     message: "Cần ít nhất một kênh có quota",
+    path: ["quotaEmail"],
   });
-
-export const voucherBatchInputSchema = z.object({
-  id: z.int().optional(),
-  batchType: z.enum(BATCH_TYPES, { error: "Chọn loại lô" }),
-  ruleId: z
-    .int({ error: "Chọn quy tắc áp dụng" })
-    .min(1, "Chọn quy tắc áp dụng"),
-  durationValue: z
-    .int({ error: "Thời hạn phải là số nguyên" })
-    .min(1, "Thời hạn tối thiểu là 1"),
-  durationUnit: z.enum(DURATION_UNITS, { error: "Chọn đơn vị thời hạn" }),
-  codeConfig: codeConfigSchema,
-  distributionChannels: distributionChannelsSchema,
-});
 
 export const campaignInputSchema = z
   .object({
-    campaignName: z
+    name: z
       .string()
       .trim()
       .min(3, "Tên chiến dịch tối thiểu 3 ký tự")
       .max(255, "Tên chiến dịch tối đa 255 ký tự"),
     startTime: dateTimeLocal,
     endTime: dateTimeLocal,
-    status: z.enum(CAMPAIGN_STATUSES).optional(),
-    voucherBatches: z
-      .array(voucherBatchInputSchema)
-      .min(1, "Cần ít nhất một lô mã"),
+    batches: z.array(voucherBatchInputSchema).min(1, "Cần ít nhất một lô mã"),
   })
   .refine((v) => v.endTime > v.startTime, {
     message: "Thời gian kết thúc phải sau thời gian bắt đầu",
@@ -66,7 +68,19 @@ export const campaignInputSchema = z
 export type CampaignInput = z.infer<typeof campaignInputSchema>;
 export type VoucherBatchInput = z.infer<typeof voucherBatchInputSchema>;
 
-// Chuyển lỗi zod thành map theo đường dẫn, ví dụ "voucherBatches.0.codeConfig.prefix"
+// Đổi quota từ form sang cấu trúc của spec
+export function toDistributionChannels(
+  input: Pick<VoucherBatchInput, "quotaEmail" | "quotaWebhook">,
+): DistributionChannels {
+  return {
+    allocations: [
+      { channel: "EMAIL", quota: input.quotaEmail },
+      { channel: "WEBHOOK", quota: input.quotaWebhook },
+    ],
+  };
+}
+
+// Chuyển lỗi zod thành map theo đường dẫn, ví dụ "batches.0.codeConfig.prefix"
 export function toFieldErrors(error: z.ZodError): Record<string, string> {
   const result: Record<string, string> = {};
   for (const issue of error.issues) {

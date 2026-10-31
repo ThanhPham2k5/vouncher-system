@@ -1,56 +1,49 @@
-import { campaignInputSchema } from "./schemas";
-import { MOCK_CAMPAIGNS, MOCK_RULES } from "./mock-data";
+import { campaignInputSchema, toDistributionChannels } from "./schemas";
+import {
+  MOCK_BATCHES,
+  MOCK_BATCH_RULES,
+  MOCK_CAMPAIGNS,
+  MOCK_CONDITIONS,
+  MOCK_REWARDS,
+} from "./mock-data";
 import type {
   BatchRuleOption,
   CampaignInput,
   CampaignResponse,
   CampaignStatus,
+  CampaignView,
+  VoucherBatchInput,
   VoucherBatchResponse,
 } from "./types";
 
 // Dữ liệu nằm trong bộ nhớ trình duyệt, tải lại trang sẽ về dữ liệu mẫu.
-// Khi BE có API chiến dịch, thay từng hàm bằng fetch tới BACKEND_URL qua route handler.
-let store: CampaignResponse[] = structuredClone(MOCK_CAMPAIGNS);
-let nextId = 1000;
+// Khi BE có API thật, thay từng hàm bằng fetch tới BACKEND_URL qua route handler.
+// Theo spec: tạo chiến dịch = POST /campaigns, mỗi lô = POST /voucher-batches.
+// Spec không có DELETE lô mã, nên lô bị bỏ khỏi form vẫn được giữ lại.
+let campaigns: CampaignResponse[] = structuredClone(MOCK_CAMPAIGNS);
+let batches: VoucherBatchResponse[] = structuredClone(MOCK_BATCHES);
+let nextCampaignId = 1000;
+let nextBatchId = 2000;
+const ADMIN_ID = 1;
 
-function wait(ms = 500): Promise<void> {
+function wait(ms = 400): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Chiến dịch đang ACTIVE/PAUSED mà quá endTime thì hiển thị ENDED (không ghi đè dữ liệu gốc).
+// Spec không cho người dùng đặt EXPIRED, nên FE tự chuyển khi quá endTime
 function resolveStatus(c: CampaignResponse): CampaignStatus {
-  if (c.status === "DRAFT") return "DRAFT";
-  const end = new Date(c.endTime).getTime();
-  if (!Number.isNaN(end) && end < Date.now()) return "ENDED";
-  return c.status;
+  if (c.status === "DRAFT" || c.status === "EXPIRED") return c.status;
+  const end = Date.parse(c.endTime);
+  return !Number.isNaN(end) && end < Date.now() ? "EXPIRED" : c.status;
 }
 
-function view(c: CampaignResponse): CampaignResponse {
-  return structuredClone({ ...c, status: resolveStatus(c) });
-}
-
-function toBatches(
-  input: CampaignInput,
-  previous?: CampaignResponse,
-): VoucherBatchResponse[] {
-  return input.voucherBatches.map((b) => {
-    const old = previous?.voucherBatches.find((x) => x.id === b.id);
-    return {
-      id: old?.id ?? nextId++,
-      status: old?.status ?? "DRAFT",
-      batchType: b.batchType,
-      durationValue: b.durationValue,
-      durationUnit: b.durationUnit,
-      generatedCount: old?.generatedCount ?? 0,
-      redeemedCount: old?.redeemedCount ?? 0,
-      rule: { id: b.ruleId },
-      codeConfigJson: { ...b.codeConfig },
-      distributionChannelsJson: {
-        email: b.distributionChannels.email,
-        webhook: b.distributionChannels.webhook,
-      },
-      createdAt: old?.createdAt ?? new Date().toISOString(),
-    };
+function toView(c: CampaignResponse): CampaignView {
+  const own = batches.filter((b) => b.campaignId === c.id);
+  return structuredClone({
+    ...c,
+    status: resolveStatus(c),
+    batchIds: own.map((b) => b.id),
+    batches: own,
   });
 }
 
@@ -61,75 +54,116 @@ function assertValid(input: CampaignInput): void {
   }
 }
 
-export async function listCampaigns(): Promise<CampaignResponse[]> {
+function toBatch(
+  input: VoucherBatchInput,
+  campaignId: number,
+  existing?: VoucherBatchResponse,
+): VoucherBatchResponse {
+  return {
+    id: existing?.id ?? nextBatchId++,
+    campaignId,
+    ruleId: input.ruleId,
+    batchType: input.batchType,
+    codeConfig: { ...input.codeConfig },
+    durationUnit: input.durationUnit,
+    durationValue: input.durationValue,
+    generatedCount: existing?.generatedCount ?? 0,
+    redeemedCount: existing?.redeemedCount ?? 0,
+    distributionChannels: toDistributionChannels(input),
+    status: existing?.status ?? "DRAFT",
+  };
+}
+
+export async function listCampaigns(): Promise<CampaignView[]> {
   await wait();
-  return store.map(view);
+  return campaigns.map(toView);
 }
 
-export async function getCampaign(
-  id: number,
-): Promise<CampaignResponse | null> {
+export async function getCampaign(id: number): Promise<CampaignView | null> {
   await wait(300);
-  const found = store.find((c) => c.id === id);
-  return found ? view(found) : null;
+  const found = campaigns.find((c) => c.id === id);
+  return found ? toView(found) : null;
 }
 
+// Tạo chiến dịch ở trạng thái DRAFT rồi tạo từng lô. Kích hoạt ở trang chi tiết.
 export async function createCampaign(
   input: CampaignInput,
-): Promise<CampaignResponse> {
+): Promise<CampaignView> {
   await wait();
   assertValid(input);
-  const now = new Date().toISOString();
-  const campaign: CampaignResponse = {
-    id: nextId++,
-    campaignName: input.campaignName.trim(),
+  const id = nextCampaignId++;
+  const created: CampaignResponse = {
+    id,
+    name: input.name.trim(),
     startTime: input.startTime,
     endTime: input.endTime,
-    status: input.status ?? "ACTIVE",
-    admin: { id: 1 },
-    createdAt: now,
-    voucherBatches: toBatches(input),
+    status: "DRAFT",
+    batchIds: [],
+    adminId: ADMIN_ID,
   };
-  store = [campaign, ...store];
-  return view(campaign);
+  campaigns = [created, ...campaigns];
+  batches = [...batches, ...input.batches.map((b) => toBatch(b, id))];
+  return toView(created);
 }
 
+// PATCH chiến dịch, PATCH các lô đã có (có id), POST các lô mới (không có id)
 export async function updateCampaign(
   id: number,
   input: CampaignInput,
-): Promise<CampaignResponse> {
+): Promise<CampaignView> {
   await wait();
   assertValid(input);
-  const existing = store.find((c) => c.id === id);
+  const existing = campaigns.find((c) => c.id === id);
   if (!existing) throw new Error("Không tìm thấy chiến dịch");
+
   const updated: CampaignResponse = {
     ...existing,
-    campaignName: input.campaignName.trim(),
+    name: input.name.trim(),
     startTime: input.startTime,
     endTime: input.endTime,
-    voucherBatches: toBatches(input, existing),
   };
-  store = store.map((c) => (c.id === id ? updated : c));
-  return view(updated);
+  campaigns = campaigns.map((c) => (c.id === id ? updated : c));
+
+  batches = [
+    ...batches.map((b) => {
+      if (b.campaignId !== id) return b;
+      const incoming = input.batches.find((x) => x.id === b.id);
+      return incoming ? toBatch(incoming, id, b) : b;
+    }),
+    ...input.batches
+      .filter((x) => x.id === undefined)
+      .map((x) => toBatch(x, id)),
+  ];
+
+  return toView(updated);
 }
 
-// Chỉ cho đổi giữa ACTIVE và PAUSED. Các trạng thái khác đi theo luồng riêng của BE.
+// Spec đổi trạng thái qua PATCH /campaigns/{id} với trường status
 export async function setCampaignStatus(
   id: number,
   status: "ACTIVE" | "PAUSED",
-): Promise<CampaignResponse> {
-  await wait(400);
-  const existing = store.find((c) => c.id === id);
+): Promise<CampaignView> {
+  await wait(300);
+  const existing = campaigns.find((c) => c.id === id);
   if (!existing) throw new Error("Không tìm thấy chiến dịch");
-  if (resolveStatus(existing) === "ENDED") {
-    throw new Error("Chiến dịch đã kết thúc, không thể đổi trạng thái");
+  if (resolveStatus(existing) === "EXPIRED") {
+    throw new Error("Chiến dịch đã hết hạn, không thể đổi trạng thái");
   }
   const updated: CampaignResponse = { ...existing, status };
-  store = store.map((c) => (c.id === id ? updated : c));
-  return view(updated);
+  campaigns = campaigns.map((c) => (c.id === id ? updated : c));
+  return toView(updated);
 }
 
+// Danh sách batch rule cho form: tên ghép từ reward và condition
 export async function listRules(): Promise<BatchRuleOption[]> {
   await wait(200);
-  return MOCK_RULES;
+  return MOCK_BATCH_RULES.map((r) => {
+    const reward = MOCK_REWARDS.find((x) => x.id === r.rewardId);
+    const condition = MOCK_CONDITIONS.find((x) => x.id === r.conditionId);
+    return {
+      id: r.id,
+      name: `${reward?.name ?? "Chưa rõ phần thưởng"} · ${condition?.name ?? "Chưa rõ điều kiện"}`,
+      rewardType: reward?.rewardType ?? "PERCENTAGE",
+    };
+  });
 }
