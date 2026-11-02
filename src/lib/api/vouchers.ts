@@ -35,7 +35,7 @@ function seedWallet(): CustomerVoucherResponse[] {
       voucherId: pick(0),
       status: "AVAILABLE",
       claimedAt: "2025-10-02T09:00:00Z",
-      ENDEDAt: "2026-12-31T23:59:59Z",
+      expiredAt: "2026-12-31T23:59:59Z",
     },
     {
       id: 2,
@@ -43,7 +43,7 @@ function seedWallet(): CustomerVoucherResponse[] {
       voucherId: pick(1),
       status: "USED",
       claimedAt: "2025-10-05T10:00:00Z",
-      ENDEDAt: null,
+      expiredAt: null,
     },
     {
       id: 3,
@@ -51,15 +51,15 @@ function seedWallet(): CustomerVoucherResponse[] {
       voucherId: pick(2),
       status: "AVAILABLE",
       claimedAt: "2025-10-10T08:30:00Z",
-      ENDEDAt: "2026-12-31T23:59:59Z",
+      expiredAt: "2026-12-31T23:59:59Z",
     },
     {
       id: 4,
       customerId: 2,
       voucherId: pick(3),
-      status: "ENDED",
+      status: "EXPIRED",
       claimedAt: "2025-06-01T08:00:00Z",
-      ENDEDAt: "2025-06-30T23:59:59Z",
+      expiredAt: "2025-06-30T23:59:59Z",
     },
   ];
 }
@@ -183,7 +183,7 @@ export async function createCustomerVoucher(
     voucherId: req.voucherId,
     status: "AVAILABLE",
     claimedAt: nowIso(),
-    ENDEDAt: req.ENDEDAt,
+    expiredAt: req.expiredAt,
   };
   wallet = [...wallet, created];
   return clone(created);

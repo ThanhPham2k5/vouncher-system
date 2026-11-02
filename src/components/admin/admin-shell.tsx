@@ -9,6 +9,8 @@ import {
   Megaphone,
   Send,
   ShieldAlert,
+  SlidersHorizontal,
+  Tag,
   Ticket,
 } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
@@ -25,6 +27,8 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/admin/dashboard", label: "Bảng điều khiển", icon: LayoutDashboard },
   { href: "/admin/campaigns", label: "Chiến dịch", icon: Megaphone },
+  { href: "/admin/rules", label: "Quy tắc", icon: SlidersHorizontal },
+  { href: "/admin/vouchers", label: "Mã giảm giá", icon: Tag },
   {
     href: "/admin/distribution",
     label: "Kênh phân phối",

@@ -11,7 +11,7 @@ export async function POST() {
     await fetch(`${BACKEND_URL}/auth/logout`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: { refreshToken },
+      body: JSON.stringify({ refreshToken }),
       cache: "no-store",
     }).catch(() => null);
   }

@@ -1,8 +1,7 @@
-// Mock theo spec "Fraud & Security": /fraud-logs và /black-list.
+// Mock theo BE (ưu tiên) và spec "Fraud & Security": /fraud-logs và /black-lists.
 import type {
   BlackListCreateRequest,
   BlackListResponse,
-  BlackListUpdateRequest,
   BlacklistType,
   FraudLogCreateRequest,
   FraudLogResponse,
@@ -38,7 +37,7 @@ let blacklist: BlackListResponse[] = [
     reason: "Gian lận tạo tài khoản ảo",
     isActive: true,
     createAt: "2025-10-20T09:00:00Z",
-    ENDEDAt: null,
+    expiredAt: null,
   },
   {
     id: 2,
@@ -47,7 +46,7 @@ let blacklist: BlackListResponse[] = [
     reason: "Giả lập Android x86",
     isActive: true,
     createAt: "2025-10-24T10:42:18Z",
-    ENDEDAt: "2026-12-31T23:59:59Z",
+    expiredAt: "2026-12-31T23:59:59Z",
   },
   {
     id: 3,
@@ -56,7 +55,7 @@ let blacklist: BlackListResponse[] = [
     reason: "Máy chủ proxy ẩn danh (Tor)",
     isActive: true,
     createAt: "2025-10-24T14:15:42Z",
-    ENDEDAt: "2026-12-31T23:59:59Z",
+    expiredAt: "2026-12-31T23:59:59Z",
   },
 ];
 
@@ -68,7 +67,8 @@ export function isBlocked(args: {
 }): boolean {
   const now = Date.now();
   return blacklist.some((b) => {
-    const active = b.isActive && (!b.ENDEDAt || Date.parse(b.ENDEDAt) > now);
+    const active =
+      b.isActive && (!b.expiredAt || Date.parse(b.expiredAt) > now);
     if (!active) return false;
     if (b.type === "CUSTOMER") return b.value === String(args.customerId);
     if (b.type === "DEVICE_FINGERPRINT")
@@ -125,7 +125,7 @@ export async function createFraudLog(
   return clone(addFraudLog(req));
 }
 
-// ---- Blacklist: GET/POST /black-list, GET/PATCH /black-list/{id} ----
+// ---- Blacklist: GET/POST /black-lists, GET /black-lists/{id}, PATCH /black-lists/{id} (BE: chỉ vô hiệu hóa) ----
 export interface BlacklistFilter {
   type?: BlacklistType;
   value?: string;
@@ -157,8 +157,8 @@ export async function createBlacklist(
   await wait();
   if (!req.targetValue.trim()) badRequest("targetValue không được để trống");
   if (!req.reason.trim()) badRequest("reason không được để trống");
-  if (req.ENDEDAt && Date.parse(req.ENDEDAt) <= Date.now()) {
-    badRequest("ENDEDAt phải nằm trong tương lai");
+  if (req.expiredAt && Date.parse(req.expiredAt) <= Date.now()) {
+    badRequest("expiredAt phải nằm trong tương lai");
   }
   const created: BlackListResponse = {
     id: nextId(blacklist.map((b) => b.id)),
@@ -167,26 +167,20 @@ export async function createBlacklist(
     reason: req.reason.trim(),
     isActive: true,
     createAt: nowIso(),
-    ENDEDAt: req.ENDEDAt ?? null,
+    expiredAt: req.expiredAt ?? null,
   };
   blacklist = [...blacklist, created];
   return clone(created);
 }
 
-export async function updateBlacklist(
+// BE: PATCH /black-lists/{id} không nhận body, chỉ đặt isActive = false
+export async function deactivateBlacklist(
   id: number,
-  req: BlackListUpdateRequest,
 ): Promise<BlackListResponse> {
   await wait();
   const existing = blacklist.find((b) => b.id === id);
   if (!existing) notFound("bản ghi trong danh sách đen");
-  const updated: BlackListResponse = {
-    ...existing,
-    value: req.value?.trim() ?? existing.value,
-    reason: req.reason?.trim() ?? existing.reason,
-    isActive: req.isActive ?? existing.isActive,
-    ENDEDAt: req.ENDEDAt !== undefined ? req.ENDEDAt : existing.ENDEDAt,
-  };
+  const updated: BlackListResponse = { ...existing, isActive: false };
   blacklist = blacklist.map((b) => (b.id === id ? updated : b));
   return clone(updated);
 }

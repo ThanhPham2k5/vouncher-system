@@ -98,13 +98,28 @@ function computeDiscount(
   subtotal: number,
 ): number | null {
   const cfg = parseConfig(config);
+  // Key theo BE: discountPercent, maxDiscountAmount, discountValue, tiers[]
   if (rewardType === "PERCENTAGE") {
-    const raw = Math.floor((subtotal * Number(cfg.percent ?? 0)) / 100);
-    const cap = cfg.maxAmount !== undefined ? Number(cfg.maxAmount) : raw;
+    const raw = Math.floor((subtotal * Number(cfg.discountPercent ?? 0)) / 100);
+    const cap = Number(cfg.maxDiscountAmount ?? raw);
     return Math.min(raw, cap);
   }
   if (rewardType === "FIXED") {
-    return Math.min(Number(cfg.amount ?? 0), subtotal);
+    return Math.min(Number(cfg.discountValue ?? 0), subtotal);
+  }
+  if (rewardType === "TIERED_PERCENTAGE") {
+    // HIGHEST_MATCH: lấy bậc có minCartAmount cao nhất mà subtotal đạt được
+    const tiers = Array.isArray(cfg.tiers)
+      ? (cfg.tiers as Array<Record<string, unknown>>)
+      : [];
+    const matched = tiers
+      .filter((t) => subtotal >= Number(t.minCartAmount ?? 0))
+      .sort((a, b) => Number(b.minCartAmount) - Number(a.minCartAmount))[0];
+    if (!matched) return 0;
+    const raw = Math.floor(
+      (subtotal * Number(matched.discountPercent ?? 0)) / 100,
+    );
+    return Math.min(raw, Number(matched.maxDiscountAmount ?? raw));
   }
   return null;
 }
@@ -197,7 +212,7 @@ export async function redeemVoucher(
   if (!reward) return fail("Quy tắc áp dụng không tồn tại", voucher.id);
 
   if (condition?.conditionType === "MIN_CART_AMOUNT") {
-    const minAmount = Number(parseConfig(condition.config).minAmount ?? 0);
+    const minAmount = Number(parseConfig(condition.config).minimumAmount ?? 0);
     if (subtotal < minAmount) {
       return fail(
         `Chưa đạt giá trị đơn tối thiểu ${minAmount.toLocaleString("vi-VN")} ₫`,

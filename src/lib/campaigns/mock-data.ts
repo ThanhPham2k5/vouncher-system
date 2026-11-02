@@ -16,28 +16,41 @@ export const MOCK_REWARDS: RewardResponse[] = [
     name: "Giảm 20% phụ kiện công nghệ",
     rewardType: "PERCENTAGE",
     status: "PUBLISHED",
-    config: { percent: 20, maxAmount: 500000 },
+    config: {
+      discountPercent: 20,
+      maxDiscountAmount: 500000,
+      amountBasis: "CART_SUBTOTAL",
+    },
   },
   {
     id: 2,
     name: "Giảm 20% giờ vàng Flash Sale",
     rewardType: "PERCENTAGE",
     status: "PUBLISHED",
-    config: { percent: 20 },
+    config: {
+      discountPercent: 20,
+      maxDiscountAmount: 300000,
+      amountBasis: "CART_SUBTOTAL",
+    },
   },
   {
     id: 3,
     name: "Trợ giá vận chuyển 50k",
     rewardType: "FIXED",
     status: "PUBLISHED",
-    config: { amount: 50000 },
+    config: { discountValue: 50000 },
   },
   {
     id: 4,
     name: "Mua 2 tặng 1 túi Canvas",
     rewardType: "BUY_X_GET_Y",
     status: "PUBLISHED",
-    config: { buy: 2, get: 1 },
+    config: {
+      calculationMode: "PER_QUALIFYING_SET",
+      buy: { productIds: ["P-AO-01"], quantity: 2 },
+      get: { productIds: ["P-TUI-CANVAS"], quantity: 1, discountPercent: 100 },
+      maxApplicationsPerOrder: 1,
+    },
   },
 ];
 
@@ -47,28 +60,39 @@ export const MOCK_CONDITIONS: ConditionResponse[] = [
     name: "Đơn từ 1.5 triệu",
     conditionType: "MIN_CART_AMOUNT",
     status: "PUBLISHED",
-    config: { minAmount: 1500000 },
+    config: { minimumAmount: 1500000, amountBasis: "CART_SUBTOTAL" },
   },
   {
     id: 2,
     name: "Khung giờ vàng 12h–14h",
     conditionType: "TIME_WINDOW",
     status: "PUBLISHED",
-    config: { from: "12:00", to: "14:00" },
+    config: {
+      timezone: "Asia/Ho_Chi_Minh",
+      windows: [{ startTime: "12:00:00", endTime: "14:00:00" }],
+    },
   },
   {
     id: 3,
     name: "Khách hạng VIP / LOYAL",
     conditionType: "CUSTOMER_SEGMENT",
     status: "PUBLISHED",
-    config: { segments: ["VIP", "LOYAL"] },
+    config: { operator: "IN", segments: ["VIP", "LOYAL"] },
   },
   {
     id: 4,
     name: "Không điều kiện",
     conditionType: "COMPOSITE",
     status: "PUBLISHED",
-    config: { rules: [] },
+    config: {
+      operator: "AND",
+      conditions: [
+        {
+          type: "MIN_CART_AMOUNT",
+          config: { minimumAmount: 0, amountBasis: "CART_SUBTOTAL" },
+        },
+      ],
+    },
   },
 ];
 

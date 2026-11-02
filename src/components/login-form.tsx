@@ -36,7 +36,6 @@ export function LoginForm({
     const next: FieldErrors = {};
     if (!username.trim()) next.username = "Vui lòng nhập tên đăng nhập";
     if (!password) next.password = "Vui lòng nhập mật khẩu";
-    else if (password.length < 6) next.password = "Mật khẩu tối thiểu 6 ký tự";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -50,7 +49,7 @@ export function LoginForm({
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: { username: username.trim(), password },
+        body: JSON.stringify({ username: username.trim(), password }),
       });
       const data: { message?: string } = await res.json().catch(() => ({}));
 

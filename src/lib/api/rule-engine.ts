@@ -25,113 +25,217 @@ import {
   wait,
 } from "./common";
 
+// Khớp với BE: src/main/resources/data/rule_metadata/{conditions|rewards}/*.json
 const METADATA: RuleMetadataResponse = {
   schemaVersion: 1,
   conditionTypes: [
     {
       type: "MIN_CART_AMOUNT",
       label: "Giá trị giỏ hàng tối thiểu",
-      description: "Áp dụng khi tổng giỏ hàng đạt mức tối thiểu",
+      description: "Kiểm tra tổng tiền hàng trước chiết khấu.",
       configSchema: {
         type: "object",
-        required: ["minAmount"],
-        properties: { minAmount: { type: "integer", minimum: 0 } },
+        properties: {
+          minimumAmount: { type: "number", minimum: 0 },
+          amountBasis: { type: "string", enum: ["CART_SUBTOTAL"] },
+        },
+        required: ["minimumAmount", "amountBasis"],
+        additionalProperties: false,
       },
     },
     {
       type: "TIME_WINDOW",
-      label: "Khung giờ áp dụng",
-      description: "Chỉ áp dụng trong khung giờ trong ngày",
+      label: "Khung giờ vàng",
+      description: "Chỉ áp dụng trong các khoảng giờ được cấu hình.",
       configSchema: {
         type: "object",
-        required: ["from", "to"],
         properties: {
-          from: { type: "string", pattern: "^\\d{2}:\\d{2}$" },
-          to: { type: "string", pattern: "^\\d{2}:\\d{2}$" },
+          timezone: { type: "string", default: "Asia/Ho_Chi_Minh" },
+          windows: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              properties: {
+                startTime: {
+                  type: "string",
+                  pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+                },
+                endTime: {
+                  type: "string",
+                  pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+                },
+              },
+              required: ["startTime", "endTime"],
+              additionalProperties: false,
+            },
+          },
         },
+        required: ["timezone", "windows"],
+        additionalProperties: false,
       },
     },
     {
       type: "CUSTOMER_SEGMENT",
       label: "Nhóm khách hàng",
-      description: "Áp dụng cho các hạng khách hàng",
+      description: "Kiểm tra nhóm thành viên của khách hàng.",
       configSchema: {
         type: "object",
-        required: ["segments"],
-        properties: { segments: { type: "array", items: { type: "string" } } },
+        properties: {
+          operator: { type: "string", enum: ["IN", "NOT_IN"] },
+          segments: {
+            type: "array",
+            minItems: 1,
+            uniqueItems: true,
+            items: { type: "string", minLength: 1 },
+          },
+        },
+        required: ["operator", "segments"],
+        additionalProperties: false,
       },
     },
     {
       type: "COMPOSITE",
-      label: "Điều kiện kết hợp",
-      description: "Kết hợp nhiều điều kiện bằng AND hoặc OR",
+      label: "Kết hợp nhiều điều kiện",
+      description: "Kết hợp các điều kiện con bằng AND hoặc OR.",
       configSchema: {
         type: "object",
-        required: ["operator", "items"],
         properties: {
-          operator: { enum: ["AND", "OR"] },
-          items: { type: "array" },
+          operator: { type: "string", enum: ["AND", "OR"] },
+          conditions: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  enum: ["MIN_CART_AMOUNT", "TIME_WINDOW", "CUSTOMER_SEGMENT"],
+                },
+                config: { type: "object" },
+              },
+              required: ["type", "config"],
+              additionalProperties: false,
+            },
+          },
         },
+        required: ["operator", "conditions"],
+        additionalProperties: false,
       },
     },
   ],
   rewardTypes: [
     {
       type: "PERCENTAGE",
-      label: "Giảm theo %",
-      description: "Giảm theo tỷ lệ phần trăm, có thể giới hạn mức tối đa",
+      label: "Giảm theo phần trăm",
+      description: "Giảm theo tỷ lệ phần trăm, có giới hạn số tiền giảm.",
       configSchema: {
         type: "object",
-        required: ["percent"],
         properties: {
-          percent: { type: "number", minimum: 0, maximum: 100 },
-          maxAmount: { type: "integer", minimum: 0 },
+          discountPercent: {
+            type: "number",
+            exclusiveMinimum: 0,
+            maximum: 100,
+          },
+          maxDiscountAmount: { type: "number", minimum: 0 },
+          amountBasis: { type: "string", enum: ["CART_SUBTOTAL"] },
         },
+        required: ["discountPercent", "maxDiscountAmount", "amountBasis"],
+        additionalProperties: false,
       },
     },
     {
       type: "FIXED",
       label: "Giảm số tiền cố định",
-      description: "Trừ trực tiếp một số tiền",
+      description: "Giảm một số tiền được xác định trước.",
       configSchema: {
         type: "object",
-        required: ["amount"],
-        properties: { amount: { type: "integer", minimum: 0 } },
+        properties: { discountValue: { type: "number", exclusiveMinimum: 0 } },
+        required: ["discountValue"],
+        additionalProperties: false,
       },
     },
     {
       type: "BUY_X_GET_Y",
       label: "Mua X tặng Y",
-      description: "Mua X sản phẩm được tặng Y sản phẩm",
+      description: "Tặng sản phẩm khi đạt số lượng mua theo quy tắc.",
       configSchema: {
         type: "object",
-        required: ["buy", "get"],
         properties: {
-          buy: { type: "integer", minimum: 1 },
-          get: { type: "integer", minimum: 1 },
+          calculationMode: { type: "string", enum: ["PER_QUALIFYING_SET"] },
+          buy: {
+            type: "object",
+            properties: {
+              productIds: {
+                type: "array",
+                minItems: 1,
+                uniqueItems: true,
+                items: { type: "string", minLength: 1 },
+              },
+              quantity: { type: "integer", minimum: 1 },
+            },
+            required: ["productIds", "quantity"],
+            additionalProperties: false,
+          },
+          get: {
+            type: "object",
+            properties: {
+              productIds: {
+                type: "array",
+                minItems: 1,
+                uniqueItems: true,
+                items: { type: "string", minLength: 1 },
+              },
+              quantity: { type: "integer", minimum: 1 },
+              discountPercent: {
+                type: "number",
+                exclusiveMinimum: 0,
+                maximum: 100,
+              },
+            },
+            required: ["productIds", "quantity", "discountPercent"],
+            additionalProperties: false,
+          },
+          maxApplicationsPerOrder: { type: "integer", minimum: 1 },
         },
+        required: ["calculationMode", "buy", "get", "maxApplicationsPerOrder"],
+        additionalProperties: false,
       },
     },
     {
       type: "TIERED_PERCENTAGE",
-      label: "Giảm theo bậc",
-      description: "Tỷ lệ giảm tăng theo giá trị giỏ hàng",
+      label: "Chiết khấu theo bậc",
+      description: "Chọn mức phần trăm theo tổng tiền hàng.",
       configSchema: {
         type: "object",
-        required: ["tiers"],
         properties: {
+          calculationMode: { type: "string", enum: ["HIGHEST_MATCH"] },
+          amountBasis: { type: "string", enum: ["CART_SUBTOTAL"] },
           tiers: {
             type: "array",
+            minItems: 1,
             items: {
               type: "object",
-              required: ["minAmount", "percent"],
               properties: {
-                minAmount: { type: "integer", minimum: 0 },
-                percent: { type: "number", minimum: 0, maximum: 100 },
+                minCartAmount: { type: "number", minimum: 0 },
+                discountPercent: {
+                  type: "number",
+                  exclusiveMinimum: 0,
+                  maximum: 100,
+                },
+                maxDiscountAmount: { type: "number", minimum: 0 },
               },
+              required: [
+                "minCartAmount",
+                "discountPercent",
+                "maxDiscountAmount",
+              ],
+              additionalProperties: false,
             },
           },
         },
+        required: ["calculationMode", "amountBasis", "tiers"],
+        additionalProperties: false,
       },
     },
   ],

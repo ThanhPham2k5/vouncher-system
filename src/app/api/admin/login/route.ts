@@ -48,10 +48,10 @@ export async function POST(req: Request) {
     backendRes = await fetch(`${BACKEND_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: {
+      body: JSON.stringify({
         username: body.username,
         password: body.password,
-      },
+      }),
       cache: "no-store",
     });
   } catch {

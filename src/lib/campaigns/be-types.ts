@@ -49,7 +49,7 @@ export const CUSTOMER_VOUCHER_STATUSES = [
   "AVAILABLE",
   "UNAVAILABLE",
   "USED",
-  "ENDED",
+  "EXPIRED",
 ] as const;
 export type CustomerVoucherStatus = (typeof CUSTOMER_VOUCHER_STATUSES)[number];
 
@@ -264,13 +264,13 @@ export interface CustomerVoucherResponse {
   voucherId: number;
   status: CustomerVoucherStatus;
   claimedAt: string;
-  ENDEDAt: string | null;
+  expiredAt: string | null;
 }
 
 export interface CustomerVoucherCreateRequest {
   customerId: number;
   voucherId: number;
-  ENDEDAt: string | null;
+  expiredAt: string | null;
 }
 
 export interface CustomerVoucherUpdateRequest {
@@ -364,15 +364,10 @@ export interface BlackListCreateRequest {
   blacklistType: BlacklistType;
   targetValue: string;
   reason: string;
-  ENDEDAt?: string | null;
+  expiredAt?: string | null;
 }
 
-export interface BlackListUpdateRequest {
-  value?: string;
-  reason?: string;
-  isActive?: boolean;
-  ENDEDAt?: string | null;
-}
+// BE: PATCH /black-lists/{id} không nhận body, chỉ vô hiệu hóa bản ghi (isActive = false).
 
 export interface BlackListResponse {
   id: number;
@@ -381,7 +376,7 @@ export interface BlackListResponse {
   reason: string | null;
   isActive: boolean;
   createAt: string;
-  ENDEDAt: string | null;
+  expiredAt: string | null;
 }
 
 // ---- Rate limit ----
