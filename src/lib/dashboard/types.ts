@@ -13,7 +13,7 @@ export interface CampaignPerformance {
   id: string;
   name: string;
   batchCode: string;
-  createdAt: string; // ISO datetime
+  createAt: string; // ISO datetime
   cost: number; // chi phí chiết khấu (discount)
   revenue: number; // doanh thu thu về (final amount)
   issued: number; // số mã đã sinh

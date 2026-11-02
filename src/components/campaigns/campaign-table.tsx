@@ -182,7 +182,7 @@ export function CampaignTable({
                           Kích hoạt chiến dịch
                         </DropdownMenuItem>
                       )}
-                      {c.status === "EXPIRED" && (
+                      {c.status === "ENDED" && (
                         <DropdownMenuItem disabled>
                           Chiến dịch đã hết hạn
                         </DropdownMenuItem>

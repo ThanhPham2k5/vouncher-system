@@ -16,28 +16,28 @@ export const MOCK_REWARDS: RewardResponse[] = [
     name: "Giảm 20% phụ kiện công nghệ",
     rewardType: "PERCENTAGE",
     status: "PUBLISHED",
-    config: '{"percent":20,"maxAmount":500000}',
+    config: { percent: 20, maxAmount: 500000 },
   },
   {
     id: 2,
     name: "Giảm 20% giờ vàng Flash Sale",
     rewardType: "PERCENTAGE",
     status: "PUBLISHED",
-    config: '{"percent":20}',
+    config: { percent: 20 },
   },
   {
     id: 3,
     name: "Trợ giá vận chuyển 50k",
     rewardType: "FIXED",
     status: "PUBLISHED",
-    config: '{"amount":50000}',
+    config: { amount: 50000 },
   },
   {
     id: 4,
     name: "Mua 2 tặng 1 túi Canvas",
     rewardType: "BUY_X_GET_Y",
     status: "PUBLISHED",
-    config: '{"buy":2,"get":1}',
+    config: { buy: 2, get: 1 },
   },
 ];
 
@@ -47,28 +47,28 @@ export const MOCK_CONDITIONS: ConditionResponse[] = [
     name: "Đơn từ 1.5 triệu",
     conditionType: "MIN_CART_AMOUNT",
     status: "PUBLISHED",
-    config: '{"minAmount":1500000}',
+    config: { minAmount: 1500000 },
   },
   {
     id: 2,
     name: "Khung giờ vàng 12h–14h",
     conditionType: "TIME_WINDOW",
     status: "PUBLISHED",
-    config: '{"from":"12:00","to":"14:00"}',
+    config: { from: "12:00", to: "14:00" },
   },
   {
     id: 3,
     name: "Khách hạng VIP / LOYAL",
     conditionType: "CUSTOMER_SEGMENT",
     status: "PUBLISHED",
-    config: '{"segments":["VIP","LOYAL"]}',
+    config: { segments: ["VIP", "LOYAL"] },
   },
   {
     id: 4,
     name: "Không điều kiện",
     conditionType: "COMPOSITE",
     status: "PUBLISHED",
-    config: '{"rules":[]}',
+    config: { rules: [] },
   },
 ];
 
@@ -143,7 +143,7 @@ const SPECS: CampaignSpec[] = [
     name: "Flash Sale Hè 2026",
     start: "2026-06-01T00:00:00",
     end: "2026-06-30T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         2,
@@ -207,7 +207,7 @@ const SPECS: CampaignSpec[] = [
     name: "Mega Sale 9.9",
     start: "2026-09-09T00:00:00",
     end: "2026-09-10T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         1,
@@ -229,7 +229,7 @@ const SPECS: CampaignSpec[] = [
     name: "Sinh nhật PromoCloud",
     start: "2026-08-15T00:00:00",
     end: "2026-08-20T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         3,
@@ -251,7 +251,7 @@ const SPECS: CampaignSpec[] = [
     name: "Hè rực rỡ",
     start: "2026-07-01T00:00:00",
     end: "2026-08-31T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         4,
@@ -274,7 +274,7 @@ const SPECS: CampaignSpec[] = [
     name: "Back to School",
     start: "2026-08-25T00:00:00",
     end: "2026-09-30T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         1,
@@ -296,7 +296,7 @@ const SPECS: CampaignSpec[] = [
     name: "Freeship mùa mưa",
     start: "2026-06-15T00:00:00",
     end: "2026-07-15T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         3,
@@ -408,7 +408,7 @@ const SPECS: CampaignSpec[] = [
     name: "Cashback ví điện tử",
     start: "2026-05-01T00:00:00",
     end: "2026-06-30T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         4,
@@ -430,7 +430,7 @@ const SPECS: CampaignSpec[] = [
     name: "Hàng hiệu giảm sâu",
     start: "2026-10-10T00:00:00",
     end: "2026-10-25T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         1,
@@ -452,7 +452,7 @@ const SPECS: CampaignSpec[] = [
     name: "Xả kho Điện máy",
     start: "2026-03-01T00:00:00",
     end: "2026-03-31T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         1,
@@ -474,7 +474,7 @@ const SPECS: CampaignSpec[] = [
     name: "Mừng 8/3",
     start: "2026-03-06T00:00:00",
     end: "2026-03-10T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         2,
@@ -496,7 +496,7 @@ const SPECS: CampaignSpec[] = [
     name: "Xuân Về Lộc Phát",
     start: "2026-01-20T00:00:00",
     end: "2026-02-20T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         3,
@@ -518,7 +518,7 @@ const SPECS: CampaignSpec[] = [
     name: "Valentine Ngọt Ngào",
     start: "2026-02-10T00:00:00",
     end: "2026-02-16T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         4,
@@ -540,7 +540,7 @@ const SPECS: CampaignSpec[] = [
     name: "Khai trương kho mới",
     start: "2026-04-10T00:00:00",
     end: "2026-04-30T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         1,
@@ -562,7 +562,7 @@ const SPECS: CampaignSpec[] = [
     name: "Ngày Trái Đất",
     start: "2026-04-20T00:00:00",
     end: "2026-04-25T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [3, "GENERIC", "EARTH_", 6, "NUMERIC", 2, "DAYS", 3000, 2050, 2000, 1000],
     ],
@@ -572,7 +572,7 @@ const SPECS: CampaignSpec[] = [
     name: "Đại lễ 30.4",
     start: "2026-04-26T00:00:00",
     end: "2026-05-03T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         2,
@@ -594,7 +594,7 @@ const SPECS: CampaignSpec[] = [
     name: "Mẹ Yêu Con",
     start: "2026-05-08T00:00:00",
     end: "2026-05-15T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [4, "GENERIC", "MOM_", 8, "UPPERCASE", 7, "DAYS", 4500, 3900, 3500, 1000],
     ],
@@ -604,7 +604,7 @@ const SPECS: CampaignSpec[] = [
     name: "Ngày của Cha",
     start: "2026-06-10T00:00:00",
     end: "2026-06-20T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         1,
@@ -626,7 +626,7 @@ const SPECS: CampaignSpec[] = [
     name: "Mua sắm Hè Sớm",
     start: "2026-06-25T00:00:00",
     end: "2026-07-10T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         3,
@@ -648,7 +648,7 @@ const SPECS: CampaignSpec[] = [
     name: "Tựu trường 2026",
     start: "2026-07-20T00:00:00",
     end: "2026-08-20T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         1,
@@ -670,7 +670,7 @@ const SPECS: CampaignSpec[] = [
     name: "Trung thu sum vầy",
     start: "2026-08-20T00:00:00",
     end: "2026-09-06T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         4,
@@ -714,7 +714,7 @@ const SPECS: CampaignSpec[] = [
     name: "Mở bán iPhone sớm",
     start: "2026-10-05T00:00:00",
     end: "2026-10-20T23:59:00",
-    status: "EXPIRED",
+    status: "ENDED",
     batches: [
       [
         1,

@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { BACKEND_URL } from "@/lib/config";
 import { ADMIN_ACCESS_COOKIE, ADMIN_REFRESH_COOKIE } from "@/lib/cookies";
 
-// Khớp AuthResponse trong spec. Thời hạn trả về dạng date-time.
+// Khớp AuthResponse của BE. BE trả LocalDateTime (không có múi giờ) nên dùng giờ Việt Nam.
 interface BackendAuthTokens {
   accessToken: string;
   refreshToken: string;
   tokenType: string;
-  accessExpiresIn: string;
-  refreshExpiresIn: string;
+  accessExpiresAt: string;
+  refreshExpiresAt: string;
 }
 
 interface BackendEnvelope<T> {
@@ -18,9 +18,15 @@ interface BackendEnvelope<T> {
   timestamp?: string;
 }
 
+const VN_OFFSET = "+07:00";
+
 // Số giây còn lại đến thời điểm hết hạn, dùng làm maxAge cho cookie
-function secondsUntil(iso: string, fallback: number): number {
-  const t = Date.parse(iso);
+function secondsUntil(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const withZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value)
+    ? value
+    : `${value}${VN_OFFSET}`;
+  const t = Date.parse(withZone);
   if (Number.isNaN(t)) return fallback;
   return Math.max(1, Math.floor((t - Date.now()) / 1000));
 }
@@ -42,10 +48,10 @@ export async function POST(req: Request) {
     backendRes = await fetch(`${BACKEND_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: {
         username: body.username,
         password: body.password,
-      }),
+      },
       cache: "no-store",
     });
   } catch {
@@ -60,10 +66,17 @@ export async function POST(req: Request) {
     .catch(() => null)) as BackendEnvelope<BackendAuthTokens> | null;
 
   if (!backendRes.ok || !payload?.data) {
-    if (backendRes.status === 401 || backendRes.status === 403) {
+    // BE: 401 khi sai thông tin đăng nhập, 403 khi tài khoản bị vô hiệu hóa
+    if (backendRes.status === 401) {
       return NextResponse.json(
         { message: "Sai tên đăng nhập hoặc mật khẩu" },
         { status: 401 },
+      );
+    }
+    if (backendRes.status === 403) {
+      return NextResponse.json(
+        { message: "Tài khoản đã bị khóa, vui lòng liên hệ quản trị viên" },
+        { status: 403 },
       );
     }
     if (backendRes.status >= 500) {
@@ -78,7 +91,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { accessToken, refreshToken, accessExpiresIn, refreshExpiresIn } =
+  const { accessToken, refreshToken, accessExpiresAt, refreshExpiresAt } =
     payload.data;
   const response = NextResponse.json({ message: "Chào mừng quản trị viên" });
   const secure = process.env.NODE_ENV === "production";
@@ -88,14 +101,14 @@ export async function POST(req: Request) {
     sameSite: "lax",
     secure,
     path: "/",
-    maxAge: secondsUntil(accessExpiresIn, 60 * 60 * 2),
+    maxAge: secondsUntil(accessExpiresAt, 60 * 60 * 2),
   });
   response.cookies.set(ADMIN_REFRESH_COOKIE, refreshToken, {
     httpOnly: true,
     sameSite: "lax",
     secure,
     path: "/",
-    maxAge: secondsUntil(refreshExpiresIn, 60 * 60 * 24 * 7),
+    maxAge: secondsUntil(refreshExpiresAt, 60 * 60 * 24 * 7),
   });
 
   return response;

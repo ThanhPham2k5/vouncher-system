@@ -18,7 +18,7 @@ export const STATUS_META: Record<
   ACTIVE: { label: "Đang chạy", variant: "success" },
   PAUSED: { label: "Tạm dừng", variant: "warning" },
   DRAFT: { label: "Bản nháp", variant: "muted" },
-  EXPIRED: { label: "Đã hết hạn", variant: "muted" },
+  ENDED: { label: "Đã hết hạn", variant: "muted" },
 };
 
 export const BATCH_STATUS_LABEL: Record<BatchStatus, string> = {

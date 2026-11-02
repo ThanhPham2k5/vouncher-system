@@ -50,7 +50,7 @@ export function LoginForm({
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: { username: username.trim(), password },
       });
       const data: { message?: string } = await res.json().catch(() => ({}));
 
@@ -67,7 +67,8 @@ export function LoginForm({
       router.refresh();
     } catch {
       toast.error("Không kết nối được máy chủ", {
-        description: "Kiểm tra backend đã chạy và BACKEND_URL trong .env đúng chưa.",
+        description:
+          "Kiểm tra backend đã chạy và BACKEND_URL trong .env đúng chưa.",
       });
       setLoading(false);
     }
@@ -123,7 +124,11 @@ export function LoginForm({
             aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
             tabIndex={-1}
           >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
           </button>
         </div>
         {errors.password && (

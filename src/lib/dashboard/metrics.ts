@@ -67,6 +67,6 @@ export function sortCampaigns(
           calcRedemptionRate(a.issued, a.redeemed),
       );
     case "newest":
-      return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return items.sort((a, b) => b.createAt.localeCompare(a.createAt));
   }
 }

@@ -25,7 +25,7 @@ import type { CampaignStatus, CampaignView } from "@/lib/campaigns/types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 
 type StatusFilter = CampaignStatus | "ALL";
-const STATUS_ORDER: CampaignStatus[] = ["ACTIVE", "PAUSED", "DRAFT", "EXPIRED"];
+const STATUS_ORDER: CampaignStatus[] = ["ACTIVE", "PAUSED", "DRAFT", "ENDED"];
 const PAGE_SIZE = 10;
 
 export function CampaignsView() {
@@ -60,7 +60,7 @@ export function CampaignsView() {
       ACTIVE: 0,
       PAUSED: 0,
       DRAFT: 0,
-      EXPIRED: 0,
+      ENDED: 0,
     };
     campaigns?.forEach((c) => {
       result[c.status] += 1;

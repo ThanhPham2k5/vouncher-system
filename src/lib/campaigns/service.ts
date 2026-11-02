@@ -14,6 +14,7 @@ import type {
   CampaignView,
   VoucherBatchInput,
   VoucherBatchResponse,
+  VoucherBatchUpdateRequest,
 } from "./types";
 
 // Dữ liệu nằm trong bộ nhớ trình duyệt, tải lại trang sẽ về dữ liệu mẫu.
@@ -30,11 +31,11 @@ function wait(ms = 400): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Spec không cho người dùng đặt EXPIRED, nên FE tự chuyển khi quá endTime
+// Spec không cho người dùng đặt ENDED, nên FE tự chuyển khi quá endTime
 function resolveStatus(c: CampaignResponse): CampaignStatus {
-  if (c.status === "DRAFT" || c.status === "EXPIRED") return c.status;
+  if (c.status === "DRAFT" || c.status === "ENDED") return c.status;
   const end = Date.parse(c.endTime);
-  return !Number.isNaN(end) && end < Date.now() ? "EXPIRED" : c.status;
+  return !Number.isNaN(end) && end < Date.now() ? "ENDED" : c.status;
 }
 
 function toView(c: CampaignResponse): CampaignView {
@@ -146,7 +147,7 @@ export async function setCampaignStatus(
   await wait(300);
   const existing = campaigns.find((c) => c.id === id);
   if (!existing) throw new Error("Không tìm thấy chiến dịch");
-  if (resolveStatus(existing) === "EXPIRED") {
+  if (resolveStatus(existing) === "ENDED") {
     throw new Error("Chiến dịch đã hết hạn, không thể đổi trạng thái");
   }
   const updated: CampaignResponse = { ...existing, status };
@@ -166,4 +167,55 @@ export async function listRules(): Promise<BatchRuleOption[]> {
       rewardType: reward?.rewardType ?? "PERCENTAGE",
     };
   });
+}
+
+// ---- Voucher batches: GET /voucher-batches, GET/PATCH /voucher-batches/{id} ----
+export function findVoucherBatch(id: number): VoucherBatchResponse | undefined {
+  const found = batches.find((b) => b.id === id);
+  return found ? structuredClone(found) : undefined;
+}
+
+export async function listVoucherBatches(
+  campaignId?: number,
+): Promise<VoucherBatchResponse[]> {
+  await wait(300);
+  return batches
+    .filter((b) => campaignId === undefined || b.campaignId === campaignId)
+    .map((b) => structuredClone(b));
+}
+
+export async function getVoucherBatch(
+  id: number,
+): Promise<VoucherBatchResponse> {
+  await wait(200);
+  const found = batches.find((b) => b.id === id);
+  if (!found) throw new Error("Không tìm thấy lô mã");
+  return structuredClone(found);
+}
+
+export async function updateVoucherBatch(
+  id: number,
+  req: VoucherBatchUpdateRequest,
+): Promise<VoucherBatchResponse> {
+  await wait();
+  const existing = batches.find((b) => b.id === id);
+  if (!existing) throw new Error("Không tìm thấy lô mã");
+  if (req.codeConfig && existing.status === "GENERATED") {
+    throw new Error("Lô đã sinh mã, không thể đổi codeConfig");
+  }
+  if (req.codeConfig && !/^[A-Z0-9_]{2,10}$/.test(req.codeConfig.prefix)) {
+    throw new Error("Tiền tố 2–10 ký tự: A–Z, 0–9, _");
+  }
+  const updated: VoucherBatchResponse = {
+    ...existing,
+    ruleId: req.ruleId ?? existing.ruleId,
+    codeConfig: req.codeConfig ? { ...req.codeConfig } : existing.codeConfig,
+    durationUnit: req.durationUnit ?? existing.durationUnit,
+    durationValue: req.durationValue ?? existing.durationValue,
+    distributionChannels:
+      req.distributionChannels ?? existing.distributionChannels,
+    status: req.status ?? existing.status,
+  };
+  batches = batches.map((b) => (b.id === id ? updated : b));
+  return structuredClone(updated);
 }

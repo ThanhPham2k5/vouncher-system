@@ -6,8 +6,8 @@
 export const CAMPAIGN_STATUSES = [
   "DRAFT",
   "ACTIVE",
-  "EXPIRED",
   "PAUSED",
+  "ENDED",
 ] as const;
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 
@@ -49,7 +49,7 @@ export const CUSTOMER_VOUCHER_STATUSES = [
   "AVAILABLE",
   "UNAVAILABLE",
   "USED",
-  "EXPIRED",
+  "ENDED",
 ] as const;
 export type CustomerVoucherStatus = (typeof CUSTOMER_VOUCHER_STATUSES)[number];
 
@@ -83,6 +83,9 @@ export interface ApiResponse<T> {
   timestamp: string;
 }
 
+// Config của reward, condition và metadata là object JSON (BE dùng JsonNode)
+export type JsonObject = Record<string, unknown>;
+
 // ---- Authentication ----
 export interface LoginRequest {
   username: string;
@@ -102,8 +105,9 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   tokenType: string; // "bearer"
-  accessExpiresIn: string; // SPEC: date-time, thời điểm hết hạn access token
-  refreshExpiresIn: string; // SPEC: date-time, thời điểm hết hạn refresh token
+  // BE trả LocalDateTime, không có múi giờ (ví dụ "2026-11-02T13:24:08"), giờ Việt Nam
+  accessExpiresAt: string;
+  refreshExpiresAt: string;
 }
 
 // ---- Campaigns ----
@@ -186,19 +190,19 @@ export interface RewardResponse {
   name: string;
   rewardType: RewardType;
   status: RuleStatus;
-  config: string; // SPEC: string, nội dung là JSON
+  config: JsonObject; // BE: JsonNode, là object JSON
 }
 
 export interface RewardCreateRequest {
   name: string;
   rewardType: RewardType;
-  config: string;
+  config: JsonObject;
 }
 
 export interface RewardUpdateRequest {
   name?: string;
   rewardType?: RewardType;
-  config?: string;
+  config?: JsonObject;
 }
 
 export interface ConditionResponse {
@@ -206,26 +210,26 @@ export interface ConditionResponse {
   name: string;
   conditionType: ConditionType;
   status: RuleStatus;
-  config: string;
+  config: JsonObject;
 }
 
 export interface ConditionCreateRequest {
   name: string;
   conditionType: ConditionType;
-  config: string;
+  config: JsonObject;
 }
 
 export interface ConditionUpdateRequest {
   name?: string;
   conditionType?: ConditionType;
-  config?: string;
+  config?: JsonObject;
 }
 
 export interface RuleTypeMetadata {
   type: string;
   label: string;
   description: string;
-  configSchema: string; // JSON schema dạng string
+  configSchema: JsonObject; // BE: JsonNode, là object JSON schema
 }
 
 export interface RuleMetadataResponse {
@@ -260,13 +264,13 @@ export interface CustomerVoucherResponse {
   voucherId: number;
   status: CustomerVoucherStatus;
   claimedAt: string;
-  expiredAt: string | null;
+  ENDEDAt: string | null;
 }
 
 export interface CustomerVoucherCreateRequest {
   customerId: number;
   voucherId: number;
-  expiredAt: string | null;
+  ENDEDAt: string | null;
 }
 
 export interface CustomerVoucherUpdateRequest {
@@ -302,7 +306,7 @@ export interface VoucherRedeemRequest {
   voucherCode: string;
   customerId: string;
   cartSubtotal: number;
-  customerSegment?: string[];
+  customerSegments?: string[];
   items: CartItemRequest[];
 }
 
@@ -325,7 +329,7 @@ export interface VoucherRedeemResponse {
 export interface RedemptionLogResponse {
   id: number;
   voucherId: number;
-  customerId: number;
+  customerId: string; // BE: String
   ipAddress: string | null;
   deviceFingerprint: string | null;
   originalAmount: number;
@@ -333,13 +337,13 @@ export interface RedemptionLogResponse {
   finalAmount: number;
   status: RedemptionStatus;
   failureReason: string | null;
-  createdAt: string;
+  createAt: string; // BE: createAt (không phải createAt)
 }
 
 // ---- Fraud & security ----
 export interface FraudLogCreateRequest {
   voucherId: number;
-  customerId: number;
+  customerId: string; // BE: String
   ipAddress: string;
   deviceFingerprint: string;
   violationRule: string;
@@ -348,25 +352,26 @@ export interface FraudLogCreateRequest {
 export interface FraudLogResponse {
   id: number;
   voucherId: number;
-  customerId: number;
+  customerId: string; // BE: String
   ipAddress: string | null;
   deviceFingerprint: string | null;
   violationRule: string;
-  createdAt: string;
+  createAt: string;
 }
 
+// BE: BlackListCreateRequest dùng blacklistType và targetValue
 export interface BlackListCreateRequest {
-  type: BlacklistType;
-  value: string;
+  blacklistType: BlacklistType;
+  targetValue: string;
   reason: string;
-  expiredAt?: string | null;
+  ENDEDAt?: string | null;
 }
 
 export interface BlackListUpdateRequest {
   value?: string;
   reason?: string;
   isActive?: boolean;
-  expiredAt?: string | null;
+  ENDEDAt?: string | null;
 }
 
 export interface BlackListResponse {
@@ -375,8 +380,8 @@ export interface BlackListResponse {
   value: string;
   reason: string | null;
   isActive: boolean;
-  createdAt: string;
-  expiredAt: string | null;
+  createAt: string;
+  ENDEDAt: string | null;
 }
 
 // ---- Rate limit ----
@@ -413,7 +418,7 @@ export interface RateLimitConfigResponse {
   actionOnExceed: ActionOnExceed;
   priority: number;
   isActive: boolean;
-  createdAt: string;
+  createAt: string;
 }
 
 // ---- Statistics ----
