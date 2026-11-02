@@ -3,24 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
-import { VoucherDetailDialog } from "@/components/vounchers/voucher-detail-dialog";
+import { VoucherDetailDialog } from "@/components/vouchers/voucher-detail-dialog";
 import {
   WALLET_STATUS_META,
   WALLET_STATUS_ORDER,
-} from "@/components/vounchers/voucher-status";
+} from "@/components/vouchers/voucher-status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PaginationBar } from "@/components/ui/pagination-bar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -211,47 +205,41 @@ export function VouchersView() {
             />
           </div>
           <div className="lg:w-56">
-            <Select
+            <SearchableSelect
+              aria-label="Lọc theo chiến dịch"
               value={campaignFilter}
               onValueChange={(v) => {
                 setCampaignFilter(v);
                 setBatchFilter(ALL);
                 setPage(1);
               }}
-            >
-              <SelectTrigger aria-label="Lọc theo chiến dịch">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Tất cả chiến dịch</SelectItem>
-                {(data?.campaigns ?? []).map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              searchPlaceholder="Tìm chiến dịch..."
+              options={[
+                { value: ALL, label: "Tất cả chiến dịch" },
+                ...(data?.campaigns ?? []).map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                })),
+              ]}
+            />
           </div>
           <div className="lg:w-48">
-            <Select
+            <SearchableSelect
+              aria-label="Lọc theo lô"
               value={batchFilter}
               onValueChange={(v) => {
                 setBatchFilter(v);
                 setPage(1);
               }}
-            >
-              <SelectTrigger aria-label="Lọc theo lô">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Tất cả lô</SelectItem>
-                {batchOptions.map((b) => (
-                  <SelectItem key={b.id} value={String(b.id)}>
-                    Lô #{b.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              searchPlaceholder="Tìm lô..."
+              options={[
+                { value: ALL, label: "Tất cả lô" },
+                ...batchOptions.map((b) => ({
+                  value: String(b.id),
+                  label: `Lô #${b.id}`,
+                })),
+              ]}
+            />
           </div>
         </CardContent>
       </Card>

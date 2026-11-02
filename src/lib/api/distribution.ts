@@ -1,5 +1,6 @@
-// Mock theo spec "Distribution Logs": /distributions/logs và /distributions.
-// Spec ghi "/distributitions" (gõ sai), mock dùng "/distributions".
+// Mock theo BE + spec "Distribution Logs".
+// BE hiện chỉ có service GET all/GET by id (chưa có controller); POST theo spec là /distributitions (spec gõ sai).
+// Response theo BE: không có campaignId, sentAt luôn có giá trị. Chiến dịch suy ra từ voucher.
 import { findVoucherBatch } from "@/lib/campaigns/service";
 import type {
   DistributionChannel,
@@ -19,19 +20,22 @@ function seedLogs(): DistributionLogResponse[] {
       (v, i): DistributionLogResponse => ({
         id: i + 1,
         voucherId: v.id,
-        campaignId: v.campaignId,
         channel: i === 1 ? "WEBHOOK" : "EMAIL",
         targetAddress:
           i === 1
             ? "https://api.merchant.vn/webhooks/promo"
             : `khach${i + 1}@example.com`,
         status: i === 1 ? "FAILED" : "SENT",
-        sentAt: i === 1 ? null : "2025-10-24T10:00:00Z",
+        sentAt: "2025-10-24T10:00:00Z",
       }),
     );
 }
 
 let logs: DistributionLogResponse[] = seedLogs();
+
+function campaignOfVoucher(voucherId: number): number | undefined {
+  return getVouchersSnapshot().find((v) => v.id === voucherId)?.campaignId;
+}
 
 function isValidTarget(channel: DistributionChannel, target: string): boolean {
   if (channel === "EMAIL") return EMAIL_PATTERN.test(target);
@@ -53,7 +57,7 @@ export async function listDistributionLogs(
       (l) =>
         (filter.voucherId === undefined || l.voucherId === filter.voucherId) &&
         (filter.campaignId === undefined ||
-          l.campaignId === filter.campaignId) &&
+          campaignOfVoucher(l.voucherId) === filter.campaignId) &&
         (filter.status === undefined || l.status === filter.status),
     ),
   );
@@ -91,17 +95,16 @@ export async function createDistributionLog(
   const created: DistributionLogResponse = {
     id: nextId(logs.map((l) => l.id)),
     voucherId: voucher.id,
-    campaignId: req.campaignId,
     channel: req.channel,
     targetAddress: req.targetAddress,
     status: "PENDING",
-    sentAt: null,
+    sentAt: nowIso(),
   };
   logs = [...logs, created];
 
   setTimeout(() => {
     logs = logs.map((l) =>
-      l.id === created.id ? { ...l, status: "SENT", sentAt: nowIso() } : l,
+      l.id === created.id ? { ...l, status: "SENT" } : l,
     );
   }, 2000);
 

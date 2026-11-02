@@ -285,14 +285,15 @@ export interface DistributionLogCreateRequest {
   targetAddress: string;
 }
 
+// BE: DistributionLogResponse không có campaignId, sentAt luôn có giá trị (entity nullable = false).
+// Chiến dịch của một log được suy ra từ voucher.
 export interface DistributionLogResponse {
   id: number;
   voucherId: number;
-  campaignId: number;
   channel: DistributionChannel;
   targetAddress: string;
   status: DistributionStatus;
-  sentAt: string | null;
+  sentAt: string;
 }
 
 // ---- Redemptions ----

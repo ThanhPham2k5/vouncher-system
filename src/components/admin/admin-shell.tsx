@@ -29,12 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/campaigns", label: "Chiến dịch", icon: Megaphone },
   { href: "/admin/rules", label: "Quy tắc", icon: SlidersHorizontal },
   { href: "/admin/vouchers", label: "Mã giảm giá", icon: Tag },
-  {
-    href: "/admin/distribution",
-    label: "Kênh phân phối",
-    icon: Send,
-    soon: true,
-  },
+  { href: "/admin/distribution", label: "Kênh phân phối", icon: Send },
   {
     href: "/admin/customers",
     label: "Khách hàng & Gian lận",
