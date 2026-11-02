@@ -34,7 +34,6 @@ const NAV_ITEMS: NavItem[] = [
     href: "/admin/customers",
     label: "Khách hàng & Gian lận",
     icon: ShieldAlert,
-    soon: true,
   },
 ];
 
