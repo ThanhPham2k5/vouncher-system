@@ -23,6 +23,7 @@ import { STATUS_META } from "@/lib/campaigns/format";
 import { listCampaigns, setCampaignStatus } from "@/lib/campaigns/service";
 import type { CampaignStatus, CampaignView } from "@/lib/campaigns/types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
+import { matchesSearch, normalizeSearch } from "@/lib/search";
 
 type StatusFilter = CampaignStatus | "ALL";
 const STATUS_ORDER: CampaignStatus[] = ["ACTIVE", "PAUSED", "DRAFT", "ENDED"];
@@ -70,11 +71,10 @@ export function CampaignsView() {
 
   const filtered = useMemo(() => {
     if (!campaigns) return [];
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearch(search);
     return campaigns.filter((c) => {
       const matchStatus = statusFilter === "ALL" || c.status === statusFilter;
-      const matchText =
-        !q || c.name.toLowerCase().includes(q) || String(c.id).includes(q);
+      const matchText = matchesSearch(q, c.name, c.id);
       return matchStatus && matchText;
     });
   }, [campaigns, search, statusFilter]);

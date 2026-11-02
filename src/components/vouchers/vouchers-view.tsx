@@ -38,6 +38,7 @@ import type {
 import { listCampaigns, listVoucherBatches } from "@/lib/campaigns/service";
 import type { CampaignView } from "@/lib/campaigns/types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
+import { matchesSearch, normalizeSearch } from "@/lib/search";
 
 const PAGE_SIZE = 10;
 const ALL = "ALL";
@@ -120,13 +121,13 @@ export function VouchersView() {
 
   const filtered = useMemo(() => {
     if (!data) return [];
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearch(search);
     return data.vouchers.filter((v) => {
       const matchCampaign =
         campaignFilter === ALL || String(v.campaignId) === campaignFilter;
       const matchBatch =
         batchFilter === ALL || String(v.batchId) === batchFilter;
-      const matchText = !q || v.code.toLowerCase().includes(q);
+      const matchText = matchesSearch(q, v.code);
       return matchCampaign && matchBatch && matchText;
     });
   }, [data, search, campaignFilter, batchFilter]);

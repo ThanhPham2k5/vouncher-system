@@ -38,6 +38,7 @@ import { DISTRIBUTION_LABEL, formatDateTime } from "@/lib/campaigns/format";
 import { listCampaigns } from "@/lib/campaigns/service";
 import type { CampaignView } from "@/lib/campaigns/types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
+import { matchesSearch, normalizeSearch } from "@/lib/search";
 
 const PAGE_SIZE = 10;
 const ALL = "ALL";
@@ -99,17 +100,14 @@ export function DistributionView() {
 
   const filtered = useMemo(() => {
     if (!data) return [];
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearch(search);
     return data.logs.filter((l) => {
       const voucher = voucherById.get(l.voucherId);
       const matchStatus = statusFilter === ALL || l.status === statusFilter;
       const matchCampaign =
         campaignFilter === ALL ||
         String(voucher?.campaignId) === campaignFilter;
-      const matchText =
-        !q ||
-        l.targetAddress.toLowerCase().includes(q) ||
-        (voucher?.code.toLowerCase().includes(q) ?? false);
+      const matchText = matchesSearch(q, l.targetAddress, voucher?.code);
       return matchStatus && matchCampaign && matchText;
     });
   }, [data, voucherById, search, statusFilter, campaignFilter]);

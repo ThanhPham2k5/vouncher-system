@@ -38,6 +38,7 @@ import type {
   RuleStatus,
 } from "@/lib/campaigns/be-types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
+import { matchesSearch, normalizeSearch } from "@/lib/search";
 
 type Item = RewardResponse | ConditionResponse;
 type TypeFilter = string; // "ALL" hoặc một RewardType / ConditionType
@@ -108,11 +109,10 @@ export function RulesView() {
 
   const filtered = useMemo(() => {
     if (!items) return [];
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearch(search);
     return items.filter((it) => {
       const matchType = typeFilter === "ALL" || typeOf(kind, it) === typeFilter;
-      const matchText =
-        !q || it.name.toLowerCase().includes(q) || String(it.id).includes(q);
+      const matchText = matchesSearch(q, it.name, it.id);
       return matchType && matchText;
     });
   }, [items, kind, search, typeFilter]);

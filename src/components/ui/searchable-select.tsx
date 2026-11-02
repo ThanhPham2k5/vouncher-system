@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
+import { matchesSearch, normalizeSearch } from "@/lib/search";
 import { cn } from "@/lib/utils";
 
 export interface SearchableOption {
@@ -26,17 +27,6 @@ interface SearchableSelectProps {
   disabled?: boolean;
   className?: string;
   "aria-label"?: string;
-}
-
-// Bỏ dấu tiếng Việt để tìm "ha noi" vẫn ra "Hà Nội"
-export function normalizeSearch(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .toLowerCase()
-    .trim();
 }
 
 // Dropdown có ô tìm kiếm ngay trong panel. Không cần thư viện thêm.
@@ -65,7 +55,7 @@ export function SearchableSelect({
   const filtered = useMemo(() => {
     const q = normalizeSearch(query);
     if (!q) return options;
-    return options.filter((o) => normalizeSearch(o.label).includes(q));
+    return options.filter((o) => matchesSearch(q, o.label));
   }, [options, query]);
 
   useEffect(() => {
