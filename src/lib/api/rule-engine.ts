@@ -1,10 +1,7 @@
-// Mock theo spec "Rule Engine": /rule/rewards, /rule/conditions, /rule/metadata, /batch-rules.
-// Spec không có POST /batch-rules, nên liên kết reward-condition chỉ có seed và sửa, không tạo mới.
-import {
-  MOCK_BATCH_RULES,
-  MOCK_CONDITIONS,
-  MOCK_REWARDS,
-} from "@/lib/campaigns/mock-data";
+// BE: GET /rule/metadata (công khai), GET/POST /rule/rewards, GET/PATCH /rule/rewards/{id},
+// GET/POST /rule/conditions, GET/PATCH /rule/conditions/{id}.
+// Batch rules không có trong BE nên vẫn mock theo spec "Rule Engine": /batch-rules.
+import { MOCK_BATCH_RULES } from "@/lib/campaigns/mock-data";
 import type {
   BatchRuleResponse,
   BatchRuleUpdateRequest,
@@ -16,358 +13,74 @@ import type {
   RewardUpdateRequest,
   RuleMetadataResponse,
 } from "@/lib/campaigns/be-types";
-import {
-  assertJsonConfig,
-  badRequest,
-  clone,
-  nextId,
-  notFound,
-  wait,
-} from "./common";
+import { clone, notFound, wait } from "./common";
+import { adminRequest } from "./http";
 
-// Khớp với BE: src/main/resources/data/rule_metadata/{conditions|rewards}/*.json
-const METADATA: RuleMetadataResponse = {
-  schemaVersion: 1,
-  conditionTypes: [
-    {
-      type: "MIN_CART_AMOUNT",
-      label: "Giá trị giỏ hàng tối thiểu",
-      description: "Kiểm tra tổng tiền hàng trước chiết khấu.",
-      configSchema: {
-        type: "object",
-        properties: {
-          minimumAmount: { type: "number", minimum: 0 },
-          amountBasis: { type: "string", enum: ["CART_SUBTOTAL"] },
-        },
-        required: ["minimumAmount", "amountBasis"],
-        additionalProperties: false,
-      },
-    },
-    {
-      type: "TIME_WINDOW",
-      label: "Khung giờ vàng",
-      description: "Chỉ áp dụng trong các khoảng giờ được cấu hình.",
-      configSchema: {
-        type: "object",
-        properties: {
-          timezone: { type: "string", default: "Asia/Ho_Chi_Minh" },
-          windows: {
-            type: "array",
-            minItems: 1,
-            items: {
-              type: "object",
-              properties: {
-                startTime: {
-                  type: "string",
-                  pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
-                },
-                endTime: {
-                  type: "string",
-                  pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
-                },
-              },
-              required: ["startTime", "endTime"],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ["timezone", "windows"],
-        additionalProperties: false,
-      },
-    },
-    {
-      type: "CUSTOMER_SEGMENT",
-      label: "Nhóm khách hàng",
-      description: "Kiểm tra nhóm thành viên của khách hàng.",
-      configSchema: {
-        type: "object",
-        properties: {
-          operator: { type: "string", enum: ["IN", "NOT_IN"] },
-          segments: {
-            type: "array",
-            minItems: 1,
-            uniqueItems: true,
-            items: { type: "string", minLength: 1 },
-          },
-        },
-        required: ["operator", "segments"],
-        additionalProperties: false,
-      },
-    },
-    {
-      type: "COMPOSITE",
-      label: "Kết hợp nhiều điều kiện",
-      description: "Kết hợp các điều kiện con bằng AND hoặc OR.",
-      configSchema: {
-        type: "object",
-        properties: {
-          operator: { type: "string", enum: ["AND", "OR"] },
-          conditions: {
-            type: "array",
-            minItems: 1,
-            items: {
-              type: "object",
-              properties: {
-                type: {
-                  type: "string",
-                  enum: ["MIN_CART_AMOUNT", "TIME_WINDOW", "CUSTOMER_SEGMENT"],
-                },
-                config: { type: "object" },
-              },
-              required: ["type", "config"],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ["operator", "conditions"],
-        additionalProperties: false,
-      },
-    },
-  ],
-  rewardTypes: [
-    {
-      type: "PERCENTAGE",
-      label: "Giảm theo phần trăm",
-      description: "Giảm theo tỷ lệ phần trăm, có giới hạn số tiền giảm.",
-      configSchema: {
-        type: "object",
-        properties: {
-          discountPercent: {
-            type: "number",
-            exclusiveMinimum: 0,
-            maximum: 100,
-          },
-          maxDiscountAmount: { type: "number", minimum: 0 },
-          amountBasis: { type: "string", enum: ["CART_SUBTOTAL"] },
-        },
-        required: ["discountPercent", "maxDiscountAmount", "amountBasis"],
-        additionalProperties: false,
-      },
-    },
-    {
-      type: "FIXED",
-      label: "Giảm số tiền cố định",
-      description: "Giảm một số tiền được xác định trước.",
-      configSchema: {
-        type: "object",
-        properties: { discountValue: { type: "number", exclusiveMinimum: 0 } },
-        required: ["discountValue"],
-        additionalProperties: false,
-      },
-    },
-    {
-      type: "BUY_X_GET_Y",
-      label: "Mua X tặng Y",
-      description: "Tặng sản phẩm khi đạt số lượng mua theo quy tắc.",
-      configSchema: {
-        type: "object",
-        properties: {
-          calculationMode: { type: "string", enum: ["PER_QUALIFYING_SET"] },
-          buy: {
-            type: "object",
-            properties: {
-              productIds: {
-                type: "array",
-                minItems: 1,
-                uniqueItems: true,
-                items: { type: "string", minLength: 1 },
-              },
-              quantity: { type: "integer", minimum: 1 },
-            },
-            required: ["productIds", "quantity"],
-            additionalProperties: false,
-          },
-          get: {
-            type: "object",
-            properties: {
-              productIds: {
-                type: "array",
-                minItems: 1,
-                uniqueItems: true,
-                items: { type: "string", minLength: 1 },
-              },
-              quantity: { type: "integer", minimum: 1 },
-              discountPercent: {
-                type: "number",
-                exclusiveMinimum: 0,
-                maximum: 100,
-              },
-            },
-            required: ["productIds", "quantity", "discountPercent"],
-            additionalProperties: false,
-          },
-          maxApplicationsPerOrder: { type: "integer", minimum: 1 },
-        },
-        required: ["calculationMode", "buy", "get", "maxApplicationsPerOrder"],
-        additionalProperties: false,
-      },
-    },
-    {
-      type: "TIERED_PERCENTAGE",
-      label: "Chiết khấu theo bậc",
-      description: "Chọn mức phần trăm theo tổng tiền hàng.",
-      configSchema: {
-        type: "object",
-        properties: {
-          calculationMode: { type: "string", enum: ["HIGHEST_MATCH"] },
-          amountBasis: { type: "string", enum: ["CART_SUBTOTAL"] },
-          tiers: {
-            type: "array",
-            minItems: 1,
-            items: {
-              type: "object",
-              properties: {
-                minCartAmount: { type: "number", minimum: 0 },
-                discountPercent: {
-                  type: "number",
-                  exclusiveMinimum: 0,
-                  maximum: 100,
-                },
-                maxDiscountAmount: { type: "number", minimum: 0 },
-              },
-              required: [
-                "minCartAmount",
-                "discountPercent",
-                "maxDiscountAmount",
-              ],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ["calculationMode", "amountBasis", "tiers"],
-        additionalProperties: false,
-      },
-    },
-  ],
-};
-
-let rewards: RewardResponse[] = clone(MOCK_REWARDS);
-let conditions: ConditionResponse[] = clone(MOCK_CONDITIONS);
-let batchRules: BatchRuleResponse[] = clone(MOCK_BATCH_RULES);
-
-function assertName(name: string | undefined): void {
-  if (name !== undefined && name.trim().length === 0) {
-    badRequest("name không được để trống");
-  }
+// ---- Metadata (công khai ở BE) ----
+export function getRuleMetadata(): Promise<RuleMetadataResponse> {
+  return adminRequest<RuleMetadataResponse>("rule/metadata");
 }
 
-// Đọc đồng bộ, dùng nội bộ ở mock (ví dụ tính giảm giá khi đổi mã)
-export function findReward(id: number): RewardResponse | undefined {
-  return rewards.find((r) => r.id === id);
+// ---- Rewards ----
+export function listRewards(): Promise<RewardResponse[]> {
+  return adminRequest<RewardResponse[]>("rule/rewards");
 }
 
-export function findCondition(id: number): ConditionResponse | undefined {
-  return conditions.find((c) => c.id === id);
+export function getReward(id: number): Promise<RewardResponse> {
+  return adminRequest<RewardResponse>(`rule/rewards/${id}`);
 }
 
-export function findBatchRule(id: number): BatchRuleResponse | undefined {
-  return batchRules.find((r) => r.id === id);
-}
-
-export async function getRuleMetadata(): Promise<RuleMetadataResponse> {
-  await wait(200);
-  return clone(METADATA);
-}
-
-// ---- Rewards: GET/POST /rule/rewards, GET/PATCH /rule/rewards/{id} ----
-export async function listRewards(): Promise<RewardResponse[]> {
-  await wait(200);
-  return clone(rewards);
-}
-
-export async function getReward(id: number): Promise<RewardResponse> {
-  await wait(200);
-  const found = findReward(id);
-  if (!found) notFound("cấu hình phần thưởng");
-  return clone(found);
-}
-
-export async function createReward(
+export function createReward(
   req: RewardCreateRequest,
 ): Promise<RewardResponse> {
-  await wait();
-  assertName(req.name);
-  assertJsonConfig(req.config);
-  const created: RewardResponse = {
-    id: nextId(rewards.map((r) => r.id)),
-    name: req.name.trim(),
-    rewardType: req.rewardType,
-    status: "DRAFT",
-    config: req.config,
-  };
-  rewards = [...rewards, created];
-  return clone(created);
+  return adminRequest<RewardResponse>("rule/rewards", {
+    method: "POST",
+    body: req,
+  });
 }
 
-export async function updateReward(
+export function updateReward(
   id: number,
   req: RewardUpdateRequest,
 ): Promise<RewardResponse> {
-  await wait();
-  const existing = findReward(id);
-  if (!existing) notFound("cấu hình phần thưởng");
-  assertName(req.name);
-  if (req.config !== undefined) assertJsonConfig(req.config);
-  const updated: RewardResponse = {
-    ...existing,
-    name: req.name?.trim() ?? existing.name,
-    rewardType: req.rewardType ?? existing.rewardType,
-    config: req.config ?? existing.config,
-  };
-  rewards = rewards.map((r) => (r.id === id ? updated : r));
-  return clone(updated);
+  return adminRequest<RewardResponse>(`rule/rewards/${id}`, {
+    method: "PATCH",
+    body: req,
+  });
 }
 
-// ---- Conditions: GET/POST /rule/conditions, GET/PATCH /rule/conditions/{id} ----
-export async function listConditions(): Promise<ConditionResponse[]> {
-  await wait(200);
-  return clone(conditions);
+// ---- Conditions ----
+export function listConditions(): Promise<ConditionResponse[]> {
+  return adminRequest<ConditionResponse[]>("rule/conditions");
 }
 
-export async function getCondition(id: number): Promise<ConditionResponse> {
-  await wait(200);
-  const found = findCondition(id);
-  if (!found) notFound("cấu hình điều kiện");
-  return clone(found);
+export function getCondition(id: number): Promise<ConditionResponse> {
+  return adminRequest<ConditionResponse>(`rule/conditions/${id}`);
 }
 
-export async function createCondition(
+export function createCondition(
   req: ConditionCreateRequest,
 ): Promise<ConditionResponse> {
-  await wait();
-  assertName(req.name);
-  assertJsonConfig(req.config);
-  const created: ConditionResponse = {
-    id: nextId(conditions.map((c) => c.id)),
-    name: req.name.trim(),
-    conditionType: req.conditionType,
-    status: "DRAFT",
-    config: req.config,
-  };
-  conditions = [...conditions, created];
-  return clone(created);
+  return adminRequest<ConditionResponse>("rule/conditions", {
+    method: "POST",
+    body: req,
+  });
 }
 
-export async function updateCondition(
+export function updateCondition(
   id: number,
   req: ConditionUpdateRequest,
 ): Promise<ConditionResponse> {
-  await wait();
-  const existing = findCondition(id);
-  if (!existing) notFound("cấu hình điều kiện");
-  assertName(req.name);
-  if (req.config !== undefined) assertJsonConfig(req.config);
-  const updated: ConditionResponse = {
-    ...existing,
-    name: req.name?.trim() ?? existing.name,
-    conditionType: req.conditionType ?? existing.conditionType,
-    config: req.config ?? existing.config,
-  };
-  conditions = conditions.map((c) => (c.id === id ? updated : c));
-  return clone(updated);
+  return adminRequest<ConditionResponse>(`rule/conditions/${id}`, {
+    method: "PATCH",
+    body: req,
+  });
 }
 
-// ---- Batch rules: GET /batch-rules, GET/PATCH /batch-rules/{id} ----
+// ---- Batch rules (mock theo spec, BE chưa có) ----
+// Dữ liệu seed tham chiếu ID reward/condition mock. Khi nối BE, các ID này có thể không tồn tại.
+let batchRules: BatchRuleResponse[] = clone(MOCK_BATCH_RULES);
+
 export interface BatchRuleFilter {
   rewardId?: number;
   conditionId?: number;
@@ -389,22 +102,29 @@ export async function listBatchRules(
 
 export async function getBatchRule(id: number): Promise<BatchRuleResponse> {
   await wait(200);
-  const found = findBatchRule(id);
+  const found = batchRules.find((r) => r.id === id);
   if (!found) notFound("quy tắc");
   return clone(found);
 }
 
+// Kiểm tra reward/condition tham chiếu bằng dữ liệu thật từ BE
 export async function updateBatchRule(
   id: number,
   req: BatchRuleUpdateRequest,
 ): Promise<BatchRuleResponse> {
   await wait();
-  const existing = findBatchRule(id);
+  const existing = batchRules.find((r) => r.id === id);
   if (!existing) notFound("quy tắc");
-  if (req.rewardId !== undefined && !findReward(req.rewardId))
-    notFound("cấu hình phần thưởng");
-  if (req.conditionId !== undefined && !findCondition(req.conditionId))
-    notFound("cấu hình điều kiện");
+  if (req.rewardId !== undefined) {
+    const rewards = await listRewards();
+    if (!rewards.some((r) => r.id === req.rewardId))
+      notFound("cấu hình phần thưởng");
+  }
+  if (req.conditionId !== undefined) {
+    const conditions = await listConditions();
+    if (!conditions.some((c) => c.id === req.conditionId))
+      notFound("cấu hình điều kiện");
+  }
   const updated: BatchRuleResponse = {
     ...existing,
     rewardId: req.rewardId ?? existing.rewardId,

@@ -3,7 +3,11 @@ import { LoginForm } from "@/components/login-form";
 
 export default function StoreLoginPage() {
   return (
-    <AuthShell brand="PromoStore" title="Đăng nhập tài khoản" subtitle="Đăng nhập để săn mã và áp dụng ưu đãi">
+    <AuthShell
+      brand="PromoStore"
+      title="Đăng nhập tài khoản"
+      subtitle="Đăng nhập để săn mã và áp dụng ưu đãi"
+    >
       <LoginForm
         endpoint="/api/store/login"
         redirectTo="/store/products"

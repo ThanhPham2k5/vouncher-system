@@ -1,17 +1,18 @@
-import { AppHeader } from "@/components/app-header";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { ProductsView } from "@/components/store/products-view";
+import { StoreHeader } from "@/components/store/store-header";
+import { STORE_SESSION_COOKIE } from "@/lib/cookies";
 
-export default function StoreProductsPage() {
+export default async function StoreProductsPage() {
+  const username = (await cookies()).get(STORE_SESSION_COOKIE)?.value;
+  if (!username) redirect("/store/login");
+
   return (
     <div className="min-h-screen bg-background">
-      <AppHeader
-        brand="PromoStore"
-        subtitle="Storefront"
-        logoutEndpoint="/api/store/logout"
-        loginPath="/store/login"
-      />
+      <StoreHeader username={username} />
       <main className="mx-auto max-w-7xl p-4 sm:p-6">
-        <h1 className="text-2xl font-bold tracking-tight">Sản phẩm</h1>
-        <p className="text-sm text-muted-foreground">Đăng nhập thành công. Danh sách sản phẩm sẽ được bổ sung sau.</p>
+        <ProductsView />
       </main>
     </div>
   );
