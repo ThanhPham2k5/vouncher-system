@@ -1,8 +1,14 @@
 import { campaignInputSchema, toDistributionChannels } from "./schemas";
+import { ApiError } from "@/lib/api/common";
+import {
+  fetchCampaign,
+  fetchCampaigns,
+  patchCampaign,
+  postCampaign,
+} from "@/lib/api/campaigns";
 import {
   MOCK_BATCHES,
   MOCK_BATCH_RULES,
-  MOCK_CAMPAIGNS,
   MOCK_CONDITIONS,
   MOCK_REWARDS,
 } from "./mock-data";
@@ -17,21 +23,16 @@ import type {
   VoucherBatchUpdateRequest,
 } from "./types";
 
-// Dữ liệu nằm trong bộ nhớ trình duyệt, tải lại trang sẽ về dữ liệu mẫu.
-// Khi BE có API thật, thay từng hàm bằng fetch tới BACKEND_URL qua route handler.
-// Theo spec: tạo chiến dịch = POST /campaigns, mỗi lô = POST /voucher-batches.
-// Spec không có DELETE lô mã, nên lô bị bỏ khỏi form vẫn được giữ lại.
-let campaigns: CampaignResponse[] = structuredClone(MOCK_CAMPAIGNS);
+// Chiến dịch lấy từ BE qua BFF. Lô mã vẫn là dữ liệu mẫu trong bộ nhớ vì BE chưa có endpoint voucher-batches.
+// Lô mẫu gắn theo campaignId nên có thể trùng id với chiến dịch thật. Đây là phần cần nối BE tiếp.
 let batches: VoucherBatchResponse[] = structuredClone(MOCK_BATCHES);
-let nextCampaignId = 1000;
 let nextBatchId = 2000;
-const ADMIN_ID = 1;
 
 function wait(ms = 400): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Spec không cho người dùng đặt ENDED, nên FE tự chuyển khi quá endTime
+// Spec không cho người dùng đặt ENDED, nên FE tự hiển thị ENDED khi quá endTime
 function resolveStatus(c: CampaignResponse): CampaignStatus {
   if (c.status === "DRAFT" || c.status === "ENDED") return c.status;
   const end = Date.parse(c.endTime);
@@ -76,54 +77,44 @@ function toBatch(
 }
 
 export async function listCampaigns(): Promise<CampaignView[]> {
-  await wait();
-  return campaigns.map(toView);
+  const list = await fetchCampaigns();
+  return list.map(toView);
 }
 
 export async function getCampaign(id: number): Promise<CampaignView | null> {
-  await wait(300);
-  const found = campaigns.find((c) => c.id === id);
-  return found ? toView(found) : null;
+  try {
+    return toView(await fetchCampaign(id));
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
 }
 
-// Tạo chiến dịch ở trạng thái DRAFT rồi tạo từng lô. Kích hoạt ở trang chi tiết.
+// BE tạo chiến dịch ở trạng thái DRAFT. Lô mã đi kèm hiện chỉ lưu trong bộ nhớ.
 export async function createCampaign(
   input: CampaignInput,
 ): Promise<CampaignView> {
-  await wait();
   assertValid(input);
-  const id = nextCampaignId++;
-  const created: CampaignResponse = {
-    id,
+  const created = await postCampaign({
     name: input.name.trim(),
     startTime: input.startTime,
     endTime: input.endTime,
-    status: "DRAFT",
-    batchIds: [],
-    adminId: ADMIN_ID,
-  };
-  campaigns = [created, ...campaigns];
-  batches = [...batches, ...input.batches.map((b) => toBatch(b, id))];
+  });
+  batches = [...batches, ...input.batches.map((b) => toBatch(b, created.id))];
   return toView(created);
 }
 
-// PATCH chiến dịch, PATCH các lô đã có (có id), POST các lô mới (không có id)
+// PATCH chiến dịch qua BE. Lô đã có (có id) được cập nhật, lô mới (không có id) được thêm, trong bộ nhớ.
 export async function updateCampaign(
   id: number,
   input: CampaignInput,
 ): Promise<CampaignView> {
-  await wait();
   assertValid(input);
-  const existing = campaigns.find((c) => c.id === id);
-  if (!existing) throw new Error("Không tìm thấy chiến dịch");
-
-  const updated: CampaignResponse = {
-    ...existing,
+  const updated = await patchCampaign(id, {
     name: input.name.trim(),
     startTime: input.startTime,
     endTime: input.endTime,
-  };
-  campaigns = campaigns.map((c) => (c.id === id ? updated : c));
+  });
 
   batches = [
     ...batches.map((b) => {
@@ -139,19 +130,22 @@ export async function updateCampaign(
   return toView(updated);
 }
 
-// Spec đổi trạng thái qua PATCH /campaigns/{id} với trường status
+// Đổi trạng thái qua PATCH /campaigns/{id}. BE hiện chỉ nhận status trong body nhưng không lưu,
+// nên nếu BE trả về trạng thái cũ thì báo lỗi rõ ràng thay vì báo thành công giả.
 export async function setCampaignStatus(
   id: number,
   status: "ACTIVE" | "PAUSED",
 ): Promise<CampaignView> {
-  await wait(300);
-  const existing = campaigns.find((c) => c.id === id);
-  if (!existing) throw new Error("Không tìm thấy chiến dịch");
-  if (resolveStatus(existing) === "ENDED") {
+  const current = await fetchCampaign(id);
+  if (resolveStatus(current) === "ENDED") {
     throw new Error("Chiến dịch đã hết hạn, không thể đổi trạng thái");
   }
-  const updated: CampaignResponse = { ...existing, status };
-  campaigns = campaigns.map((c) => (c.id === id ? updated : c));
+  const updated = await patchCampaign(id, { status });
+  if (updated.status !== status) {
+    throw new Error(
+      "Backend chưa lưu được trạng thái chiến dịch. CampaignController.updateConfig cần truyền request.status vào service.",
+    );
+  }
   return toView(updated);
 }
 

@@ -17,6 +17,7 @@ const ALLOWED_PATHS: RegExp[] = [
   /^redemptions\/logs(\/\d+)?$/,
   /^rule\/(rewards|conditions)(\/\d+)?$/,
   /^rule\/metadata$/,
+  /^campaigns(\/\d+)?$/,
 ];
 
 type RouteContext = { params: Promise<{ path: string[] }> };
