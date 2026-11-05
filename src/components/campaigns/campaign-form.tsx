@@ -1,10 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, Loader2, Plus, Rocket, Save, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 import { CampaignStatusBadge } from "@/components/campaigns/campaign-status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,16 +27,16 @@ import {
   toInputDateTime,
 } from "@/lib/campaigns/format";
 import {
+  campaignInputSchema,
+  toFieldErrors,
+  type Charset,
+} from "@/lib/campaigns/schemas";
+import {
   createCampaign,
   getCampaign,
   listRules,
   updateCampaign,
 } from "@/lib/campaigns/service";
-import {
-  campaignInputSchema,
-  toFieldErrors,
-  type Charset,
-} from "@/lib/campaigns/schemas";
 import type {
   BatchRuleOption,
   BatchType,
@@ -52,6 +47,11 @@ import type {
   VoucherBatchInput,
 } from "@/lib/campaigns/types";
 import { formatNumber } from "@/lib/format";
+import { ArrowLeft, Loader2, Plus, Rocket, Save, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { toast } from "sonner";
 
 interface CampaignFormProps {
   mode: "create" | "edit";
@@ -129,6 +129,7 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [generatedIds, setGeneratedIds] = useState<number[]>([]);
 
   useEffect(() => {
     listRules()
@@ -154,6 +155,9 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
         }
         setForm(toInput(c));
         setStatus(c.status);
+        setGeneratedIds(
+          c.batches.filter((b) => b.status === "GENERATED").map((b) => b.id),
+        );
       })
       .catch(() => {
         if (active) setLoadFailed(true);
@@ -352,6 +356,9 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
                   rules={rules}
                   errors={errors}
                   canRemove={form.batches.length > 1}
+                  disabled={
+                    batch.id !== undefined && generatedIds.includes(batch.id)
+                  }
                   onChange={(patch) => setBatch(index, patch)}
                   onRemove={() => removeBatch(index)}
                 />
@@ -370,7 +377,7 @@ export function CampaignForm({ mode, campaignId }: CampaignFormProps) {
                 <CampaignStatusBadge status={isEdit ? status : "DRAFT"} />
               </SummaryRow>
               <SummaryRow label="Số lô mã">{form.batches.length} lô</SummaryRow>
-              <SummaryRow label="Tổng quota kênh">
+              <SummaryRow label="Tổng quota kênh tối thiểu">
                 {formatNumber(totalQuota)} mã
               </SummaryRow>
 
@@ -409,16 +416,20 @@ interface BatchEditorProps {
   rules: BatchRuleOption[];
   errors: FormErrors;
   canRemove: boolean;
+  disabled?: boolean;
+  hideHeader?: boolean;
   onChange: (patch: Partial<VoucherBatchInput>) => void;
-  onRemove: () => void;
+  onRemove?: () => void;
 }
 
-function BatchEditor({
+export function BatchEditor({
   index,
   batch,
   rules,
   errors,
   canRemove,
+  disabled = false,
+  hideHeader = false,
   onChange,
   onRemove,
 }: BatchEditorProps) {
@@ -428,30 +439,46 @@ function BatchEditor({
   const setCode = (patch: Partial<VoucherBatchInput["codeConfig"]>) =>
     onChange({ codeConfig: { ...batch.codeConfig, ...patch } });
 
+  const removable = !!onRemove && !disabled;
+
   return (
     <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-            {index + 1}
-          </span>
-          <p className="font-medium">Lô mã {index + 1}</p>
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+              {index + 1}
+            </span>
+            <p className="font-medium">Lô mã {index + 1}</p>
+          </div>
+          {removable && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onRemove}
+              disabled={!canRemove}
+              aria-label={`Xóa lô mã ${index + 1}`}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 />
+              Xóa
+            </Button>
+          )}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onRemove}
-          disabled={!canRemove}
-          aria-label={`Xóa lô mã ${index + 1}`}
-          className="text-destructive hover:text-destructive"
-        >
-          <Trash2 />
-          Xóa
-        </Button>
-      </div>
+      )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {disabled && (
+        <p className="text-sm text-muted-foreground">
+          Lô đã sinh mã nên không thể chỉnh sửa.
+        </p>
+      )}
+
+      {/* fieldset disabled khóa toàn bộ ô nhập và nút chọn bên trong */}
+      <fieldset
+        disabled={disabled}
+        className="grid gap-4 sm:grid-cols-2 disabled:opacity-60"
+      >
         <Field label="Loại lô (batchType)" error={err("batchType")}>
           <Select
             value={batch.batchType}
@@ -580,7 +607,7 @@ function BatchEditor({
             aria-invalid={!!err("quotaWebhook")}
           />
         </Field>
-      </div>
+      </fieldset>
     </div>
   );
 }

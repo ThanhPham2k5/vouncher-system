@@ -1,27 +1,88 @@
-// Mock theo spec "Statistics": GET /statistics/roi/{campaign_id}.
-// Spec khai báo RoiResponse chỉ có "gross". Mock tính gross là tổng finalAmount các lần đổi mã thành công của chiến dịch.
-// Spec ghi type array cho response, mock trả về một object vì đây là thống kê một chiến dịch.
-import { getCampaign } from "@/lib/campaigns/service";
-import type { RoiResponse } from "@/lib/campaigns/be-types";
-import { notFound, wait } from "./common";
-import { getRedemptionsSnapshot } from "./redemptions";
-import { getVouchersSnapshot } from "./vouchers";
+// BE: GET /statistic/campaigns/{campaignId}/redemption-rate
+//     GET /statistic/campaigns/{campaignId}/incremental-revenue
+// Tùy chọn: batchId, includeCodes.
+import { adminRequest } from "./http";
 
-export async function getCampaignRoi(campaignId: number): Promise<RoiResponse> {
-  await wait(300);
-  const campaign = await getCampaign(campaignId);
-  if (!campaign) notFound("chiến dịch");
+export interface CodeRedemptionStats {
+  code: string;
+  issuedCount: number;
+  redeemedCount: number;
+  redemptionRate: number;
+}
 
-  const campaignOfVoucher = new Map(
-    getVouchersSnapshot().map((v) => [v.id, v.campaignId]),
+export interface BatchRedemptionStats {
+  batchId: string;
+  issuedCount: number;
+  redeemedCount: number;
+  redemptionRate: number;
+  codes: CodeRedemptionStats[];
+}
+
+export interface CampaignRedemptionSummary {
+  totalIssued: number;
+  totalRedeemed: number;
+  redemptionRate: number;
+}
+
+export interface CampaignRedemptionStats {
+  campaignId: string;
+  campaignName: string;
+  campaignSummary: CampaignRedemptionSummary;
+  batches: BatchRedemptionStats[];
+}
+
+export interface CodeRevenueStats {
+  code: string;
+  totalOriginalAmount: number;
+  totalDiscountAmount: number;
+  totalFinalAmount: number;
+  roi: number;
+}
+
+export interface BatchRevenueStats {
+  batchId: string;
+  totalOriginalAmount: number;
+  totalDiscountAmount: number;
+  totalFinalAmount: number;
+  roi: number;
+  codes: CodeRevenueStats[];
+}
+
+export interface CampaignRevenueSummary {
+  totalOriginalAmount: number;
+  totalDiscountAmount: number;
+  totalFinalAmount: number;
+  roi: number;
+}
+
+export interface CampaignRevenueStats {
+  campaignId: string;
+  campaignName: string;
+  campaignSummary: CampaignRevenueSummary;
+  batches: BatchRevenueStats[];
+}
+
+export interface StatisticOptions {
+  batchId?: number;
+  includeCodes?: boolean;
+}
+
+export function getCampaignRedemptionRate(
+  campaignId: number,
+  options: StatisticOptions = {},
+): Promise<CampaignRedemptionStats> {
+  return adminRequest<CampaignRedemptionStats>(
+    `statistic/campaigns/${campaignId}/redemption-rate`,
+    { query: { batchId: options.batchId, includeCodes: options.includeCodes } },
   );
-  const gross = getRedemptionsSnapshot()
-    .filter(
-      (l) =>
-        l.status === "SUCCESS" &&
-        campaignOfVoucher.get(l.voucherId) === campaignId,
-    )
-    .reduce((sum, l) => sum + l.finalAmount, 0);
+}
 
-  return { gross };
+export function getCampaignIncrementalRevenue(
+  campaignId: number,
+  options: StatisticOptions = {},
+): Promise<CampaignRevenueStats> {
+  return adminRequest<CampaignRevenueStats>(
+    `statistic/campaigns/${campaignId}/incremental-revenue`,
+    { query: { batchId: options.batchId, includeCodes: options.includeCodes } },
+  );
 }

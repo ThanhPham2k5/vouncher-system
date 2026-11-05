@@ -1,8 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Send } from "lucide-react";
-import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,9 +27,16 @@ import {
   type DistributionLogResponse,
   type VoucherBatchResponse,
 } from "@/lib/campaigns/be-types";
-import { DISTRIBUTION_LABEL } from "@/lib/campaigns/format";
+import { DISTRIBUTION_LABEL, quotaOf } from "@/lib/campaigns/format";
+import {
+  MOCK_EMAIL_TARGETS,
+  MOCK_WEBHOOK_TARGETS,
+} from "@/lib/campaigns/mock-data";
 import { listVoucherBatches } from "@/lib/campaigns/service";
 import type { CampaignView } from "@/lib/campaigns/types";
+import { Layers, Loader2, Send } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface SendDistributionDialogProps {
   open: boolean;
@@ -42,6 +46,13 @@ interface SendDistributionDialogProps {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function describeError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "";
+  if (message.includes("Channel Quota Exceeded")) {
+    return "Đã vượt quá số lần gửi cho phép";
+  }
+  return message || "Không gửi được, vui lòng thử lại.";
+}
 
 // Đặt key theo lần mở ở nơi gọi để form reset
 export function SendDistributionDialog({
@@ -106,13 +117,65 @@ export function SendDistributionDialog({
       onSent(log);
       onOpenChange(false);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Không gửi được, vui lòng thử lại.",
-      );
+      setError(describeError(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Gửi hàng loạt: số địa chỉ = min(quota của kênh, số địa chỉ mẫu).
+  // Duyệt danh sách mẫu từ đầu, gửi lần lượt từng địa chỉ. Bỏ qua ô nhập địa chỉ thủ công.
+  async function handleBulkSend() {
+    if (!campaignId) {
+      setError("Chọn chiến dịch");
+      return;
+    }
+    if (!batchId) {
+      setError("Chọn lô mã");
+      return;
+    }
+    const batch = batches.find((b) => String(b.id) === batchId);
+    if (!batch) {
+      setError("Lô mã không hợp lệ");
+      return;
+    }
+
+    const quota = quotaOf(batch.distributionChannels, channel);
+    const targets =
+      channel === "EMAIL" ? MOCK_EMAIL_TARGETS : MOCK_WEBHOOK_TARGETS;
+    const count = Math.min(quota, targets.length);
+    if (count <= 0) {
+      setError(`Kênh ${DISTRIBUTION_LABEL[channel]} của lô này chưa có quota`);
+      return;
+    }
+
+    setError(null);
+    setBusy(true);
+    let sent = 0;
+    const failures: string[] = [];
+    // Gửi tuần tự để không vượt quota và không tranh chấp với BE
+    for (let i = 0; i < count; i++) {
+      const address = targets[i];
+      try {
+        const log = await createDistributionLog({
+          batchId: Number(batchId),
+          campaignId: Number(campaignId),
+          channel,
+          targetAddress: address,
+        });
+        sent += 1;
+        onSent(log);
+      } catch (err) {
+        failures.push(describeError(err));
+      }
+    }
+    setBusy(false);
+
+    if (failures.length === 0) {
+      toast.success(`Đã gửi ${sent} mã qua ${DISTRIBUTION_LABEL[channel]}`);
+      onOpenChange(false);
+    } else {
+      setError(`${failures[0]}`);
     }
   }
 
@@ -158,7 +221,7 @@ export function SendDistributionDialog({
               emptyText="Chiến dịch này chưa có lô mã"
               options={batches.map((b) => ({
                 value: String(b.id),
-                label: `Lô #${b.id} · đã cấp ${b.generatedCount}`,
+                label: `Lô #${b.id} - có ${b.generatedCount} mã`,
               }))}
             />
           </div>
@@ -204,18 +267,34 @@ export function SendDistributionDialog({
           ) : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between">
           <Button
-            variant="secondary"
+            variant="ghost"
             onClick={() => onOpenChange(false)}
             disabled={busy}
+            className="text-muted-foreground"
           >
             Hủy bỏ
           </Button>
-          <Button onClick={handleSend} disabled={busy}>
-            {busy ? <Loader2 className="animate-spin" /> : <Send />}
-            Gửi mã
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button
+              variant="outline"
+              onClick={handleBulkSend}
+              disabled={busy}
+              className="w-full border-primary/40 text-primary hover:bg-primary/5 sm:w-auto"
+            >
+              {busy ? <Loader2 className="animate-spin" /> : <Layers />}
+              Gửi hàng loạt
+            </Button>
+            <Button
+              onClick={handleSend}
+              disabled={busy}
+              className="w-full shadow-sm sm:w-auto"
+            >
+              {busy ? <Loader2 className="animate-spin" /> : <Send />}
+              Gửi mã
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

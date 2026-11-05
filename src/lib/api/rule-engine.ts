@@ -1,7 +1,6 @@
 // BE: GET /rule/metadata (công khai), GET/POST /rule/rewards, GET/PATCH /rule/rewards/{id},
-// GET/POST /rule/conditions, GET/PATCH /rule/conditions/{id}.
-// Batch rules không có trong BE nên vẫn mock theo spec "Rule Engine": /batch-rules.
-import { MOCK_BATCH_RULES } from "@/lib/campaigns/mock-data";
+// GET/POST /rule/conditions, GET/PATCH /rule/conditions/{id},
+// GET /batch-rules (lọc reward_id, condition_id), GET/PATCH /batch-rules/{id}.
 import type {
   BatchRuleResponse,
   BatchRuleUpdateRequest,
@@ -13,7 +12,6 @@ import type {
   RewardUpdateRequest,
   RuleMetadataResponse,
 } from "@/lib/campaigns/be-types";
-import { clone, notFound, wait } from "./common";
 import { adminRequest } from "./http";
 
 // ---- Metadata (công khai ở BE) ----
@@ -77,59 +75,45 @@ export function updateCondition(
   });
 }
 
-// ---- Batch rules (mock theo spec, BE chưa có) ----
-// Dữ liệu seed tham chiếu ID reward/condition mock. Khi nối BE, các ID này có thể không tồn tại.
-let batchRules: BatchRuleResponse[] = clone(MOCK_BATCH_RULES);
-
+// ---- Batch rules: GET /batch-rules, GET/PATCH /batch-rules/{id} ----
 export interface BatchRuleFilter {
   rewardId?: number;
   conditionId?: number;
 }
 
-export async function listBatchRules(
+export function listBatchRules(
   filter: BatchRuleFilter = {},
 ): Promise<BatchRuleResponse[]> {
-  await wait(200);
-  return clone(
-    batchRules.filter(
-      (r) =>
-        (filter.rewardId === undefined || r.rewardId === filter.rewardId) &&
-        (filter.conditionId === undefined ||
-          r.conditionId === filter.conditionId),
-    ),
-  );
+  return adminRequest<BatchRuleResponse[]>("batch-rules", {
+    query: { reward_id: filter.rewardId, condition_id: filter.conditionId },
+  });
 }
 
-export async function getBatchRule(id: number): Promise<BatchRuleResponse> {
-  await wait(200);
-  const found = batchRules.find((r) => r.id === id);
-  if (!found) notFound("quy tắc");
-  return clone(found);
+export function getBatchRule(id: number): Promise<BatchRuleResponse> {
+  return adminRequest<BatchRuleResponse>(`batch-rules/${id}`);
 }
 
-// Kiểm tra reward/condition tham chiếu bằng dữ liệu thật từ BE
-export async function updateBatchRule(
+export function updateBatchRule(
   id: number,
   req: BatchRuleUpdateRequest,
 ): Promise<BatchRuleResponse> {
-  await wait();
-  const existing = batchRules.find((r) => r.id === id);
-  if (!existing) notFound("quy tắc");
-  if (req.rewardId !== undefined) {
-    const rewards = await listRewards();
-    if (!rewards.some((r) => r.id === req.rewardId))
-      notFound("cấu hình phần thưởng");
-  }
-  if (req.conditionId !== undefined) {
-    const conditions = await listConditions();
-    if (!conditions.some((c) => c.id === req.conditionId))
-      notFound("cấu hình điều kiện");
-  }
-  const updated: BatchRuleResponse = {
-    ...existing,
-    rewardId: req.rewardId ?? existing.rewardId,
-    conditionId: req.conditionId ?? existing.conditionId,
-  };
-  batchRules = batchRules.map((r) => (r.id === id ? updated : r));
-  return clone(updated);
+  return adminRequest<BatchRuleResponse>(`batch-rules/${id}`, {
+    method: "PATCH",
+    body: req,
+  });
+}
+
+export interface BatchRuleCreateRequest {
+  rewardId: number;
+  conditionId: number;
+}
+
+// BE: POST /batch-rules, trả bản ghi vừa tạo
+export function createBatchRule(
+  req: BatchRuleCreateRequest,
+): Promise<BatchRuleResponse> {
+  return adminRequest<BatchRuleResponse>("batch-rules", {
+    method: "POST",
+    body: req,
+  });
 }

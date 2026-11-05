@@ -18,6 +18,10 @@ const ALLOWED_PATHS: RegExp[] = [
   /^rule\/(rewards|conditions)(\/\d+)?$/,
   /^rule\/metadata$/,
   /^campaigns(\/\d+)?$/,
+  /^voucher-batches(\/\d+)?$/,
+  /^batch-rules(\/\d+)?$/,
+  /^distributions(\/logs\/\d+)?$/,
+  /^statistic\/campaigns\/\d+\/(redemption-rate|incremental-revenue)$/,
 ];
 
 type RouteContext = { params: Promise<{ path: string[] }> };

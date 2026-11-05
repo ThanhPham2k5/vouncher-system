@@ -4,6 +4,7 @@ import {
   DURATION_UNITS,
   type DistributionChannels,
 } from "./be-types";
+import { MAX_BULK_QUOTA_PER_CHANNEL } from "./mock-data";
 
 export const CHARSETS = ["ALPHANUMERIC", "UPPERCASE", "NUMERIC"] as const;
 export type Charset = (typeof CHARSETS)[number];
@@ -44,9 +45,33 @@ export const voucherBatchInputSchema = z
       .int({ error: "Quota phải là số nguyên" })
       .min(0, "Quota không âm"),
   })
-  .refine((v) => v.quotaEmail + v.quotaWebhook > 0, {
-    message: "Cần ít nhất một kênh có quota",
-    path: ["quotaEmail"],
+  .superRefine((v, ctx) => {
+    if (v.quotaEmail + v.quotaWebhook <= 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Cần ít nhất một kênh có quota",
+        path: ["quotaEmail"],
+      });
+    }
+
+    // BULK: mỗi mã gắn với một địa chỉ phân phối, nên quota không vượt số địa chỉ mẫu
+    // GENERIC: quota là số lần tối đa mã được dùng, không giới hạn ở đây
+    if (v.batchType === "BULK") {
+      if (v.quotaEmail > MAX_BULK_QUOTA_PER_CHANNEL) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho email`,
+          path: ["quotaEmail"],
+        });
+      }
+      if (v.quotaWebhook > MAX_BULK_QUOTA_PER_CHANNEL) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho webhook`,
+          path: ["quotaWebhook"],
+        });
+      }
+    }
   });
 
 export const campaignInputSchema = z

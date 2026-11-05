@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, Loader2, Pause, Pencil, Play, Rocket } from "lucide-react";
-import { toast } from "sonner";
+import { ActivateBatchDialog } from "@/components/campaigns/activate-batch-dialog";
+import { BatchDetailDialog } from "@/components/campaigns/batch-detail-dialog";
+import { BatchEditDialog } from "@/components/campaigns/batch-edit-dialog";
 import { CampaignStatusBadge } from "@/components/campaigns/campaign-status-badge";
 import { PauseCampaignDialog } from "@/components/campaigns/pause-campaign-dialog";
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PaginationBar } from "@/components/ui/pagination-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -33,10 +40,31 @@ import {
   formatDateTime,
   quotaOf,
 } from "@/lib/campaigns/format";
-import { getCampaign, setCampaignStatus } from "@/lib/campaigns/service";
-import type { CampaignView, Charset } from "@/lib/campaigns/types";
+import {
+  activateCampaignBatch,
+  getCampaign,
+  setCampaignStatus,
+} from "@/lib/campaigns/service";
+import type {
+  CampaignView,
+  Charset,
+  VoucherBatchResponse,
+} from "@/lib/campaigns/types";
 import { formatNumber, formatPercent } from "@/lib/format";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
+import {
+  ArrowLeft,
+  Eye,
+  Loader2,
+  MoreHorizontal,
+  Pause,
+  Pencil,
+  Play,
+  Rocket,
+} from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 const BATCH_PAGE_SIZE = 5;
 
@@ -47,6 +75,14 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
   const [pauseOpen, setPauseOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [batchPage, setBatchPage] = useState(1);
+
+  const [detailBatch, setDetailBatch] = useState<VoucherBatchResponse | null>(
+    null,
+  );
+  const [editBatch, setEditBatch] = useState<VoucherBatchResponse | null>(null);
+  const [activateBatch, setActivateBatch] =
+    useState<VoucherBatchResponse | null>(null);
+  const [activating, setActivating] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -67,6 +103,16 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
       active = false;
     };
   }, [campaignId]);
+
+  // Tải lại chiến dịch và lô mã sau khi sửa hoặc kích hoạt lô
+  async function reload() {
+    try {
+      const c = await getCampaign(campaignId);
+      if (c) setCampaign(c);
+    } catch {
+      toast.error("Không tải lại được chiến dịch");
+    }
+  }
 
   async function changeStatus(
     next: "ACTIVE" | "PAUSED",
@@ -94,6 +140,23 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
     } finally {
       setBusy(false);
       setPauseOpen(false);
+    }
+  }
+
+  async function confirmActivate() {
+    if (!activateBatch) return;
+    setActivating(true);
+    try {
+      const updated = await activateCampaignBatch(activateBatch.id);
+      toast.success(`Đã kích hoạt tạo mã cho lô #${updated.id}`);
+      setActivateBatch(null);
+      await reload();
+    } catch (err) {
+      toast.error("Không kích hoạt được lô mã", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setActivating(false);
     }
   }
 
@@ -260,7 +323,8 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
             Danh sách lô mã (Voucher batches)
           </CardTitle>
           <CardDescription>
-            Mỗi lô gắn với đúng một quy tắc áp dụng
+            Mỗi lô gắn với đúng một quy tắc áp dụng. Chỉ lô chưa sinh mã mới
+            được chỉnh sửa.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -274,10 +338,12 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                 <TableHead className="w-56">Đã sinh / Đã dùng</TableHead>
                 <TableHead>Quota kênh</TableHead>
                 <TableHead>Hiệu lực</TableHead>
+                <TableHead className="w-32 text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {batchItems.map((b) => {
+                const editable = b.status === "DRAFT";
                 const batchPct =
                   b.generatedCount === 0
                     ? 0
@@ -339,6 +405,60 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                       {b.durationValue}{" "}
                       {DURATION_LABEL[b.durationUnit].toLowerCase()}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Chi tiết lô"
+                          aria-label={`Chi tiết lô #${b.id}`}
+                          onClick={() => setDetailBatch(b)}
+                        >
+                          <Eye />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={
+                            editable
+                              ? "Chỉnh sửa lô"
+                              : "Lô đã sinh mã, không thể chỉnh sửa"
+                          }
+                          aria-label={`Chỉnh sửa lô #${b.id}`}
+                          disabled={!editable}
+                          onClick={() => setEditBatch(b)}
+                        >
+                          <Pencil />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Thao tác lô #${b.id}`}
+                            >
+                              <MoreHorizontal />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Vận hành lô</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {editable ? (
+                              <DropdownMenuItem
+                                onSelect={() => setActivateBatch(b)}
+                              >
+                                <Rocket />
+                                Kích hoạt tạo mã
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem disabled>
+                                Đã sinh mã
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -353,6 +473,33 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
           />
         </CardContent>
       </Card>
+
+      <BatchDetailDialog
+        batch={detailBatch}
+        onOpenChange={(open) => {
+          if (!open) setDetailBatch(null);
+        }}
+      />
+
+      <BatchEditDialog
+        batch={editBatch}
+        onOpenChange={(open) => {
+          if (!open) setEditBatch(null);
+        }}
+        onSaved={async () => {
+          setEditBatch(null);
+          await reload();
+        }}
+      />
+
+      <ActivateBatchDialog
+        batch={activateBatch}
+        busy={activating}
+        onOpenChange={(open) => {
+          if (!open) setActivateBatch(null);
+        }}
+        onConfirm={confirmActivate}
+      />
 
       <PauseCampaignDialog
         key={campaign.id}

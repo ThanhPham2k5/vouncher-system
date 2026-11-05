@@ -890,3 +890,58 @@ export const MOCK_BATCHES: VoucherBatchResponse[] = SPECS.flatMap((s) =>
     };
   }),
 );
+
+// Dữ liệu mẫu cho phân phối. DB chưa lưu địa chỉ email và webhook nên FE dùng danh sách này.
+// Số lượng 20 mỗi kênh cũng là giới hạn quota của lô mã loại BULK (mỗi mã gắn với một địa chỉ).
+// Dùng domain example.com và example.net để không trùng địa chỉ thật.
+export const MOCK_EMAIL_TARGETS: readonly string[] = [
+  "an.nguyen@example.com",
+  "binh.tran@example.com",
+  "chi.le@example.com",
+  "dung.pham@example.com",
+  "em.hoang@example.com",
+  "phuc.vo@example.com",
+  "giang.dang@example.com",
+  "ha.bui@example.com",
+  "khanh.do@example.com",
+  "lan.ngo@example.com",
+  "minh.duong@example.com",
+  "ngoc.ly@example.com",
+  "oanh.trinh@example.com",
+  "phong.mai@example.com",
+  "quynh.ta@example.com",
+  "son.cao@example.com",
+  "thao.ha@example.com",
+  "uyen.ly@example.net",
+  "vinh.kieu@example.net",
+  "yen.truong@example.net",
+];
+
+export const MOCK_WEBHOOK_TARGETS: readonly string[] = [
+  "https://webhooksite.net/26c79c9d-1ae8-4584-af7e-ca4a827e73e1",
+  "https://webhook.site/26c79c9d-1ae8-4584-af7e-ca4a827e73e1",
+  "https://hooks.partner-03.example.com/promo",
+  "https://hooks.partner-04.example.com/promo",
+  "https://hooks.partner-05.example.com/promo",
+  "https://hooks.partner-06.example.com/promo",
+  "https://hooks.partner-07.example.com/promo",
+  "https://hooks.partner-08.example.com/promo",
+  "https://hooks.partner-09.example.com/promo",
+  "https://hooks.partner-10.example.com/promo",
+  "https://hooks.partner-11.example.com/promo",
+  "https://hooks.partner-12.example.com/promo",
+  "https://hooks.partner-13.example.com/promo",
+  "https://hooks.partner-14.example.com/promo",
+  "https://hooks.partner-15.example.com/promo",
+  "https://hooks.partner-16.example.com/promo",
+  "https://hooks.partner-17.example.com/promo",
+  "https://hooks.partner-18.example.com/promo",
+  "https://hooks.partner-19.example.com/promo",
+  "https://hooks.partner-20.example.com/promo",
+];
+
+// Quota tối đa mỗi kênh của lô BULK
+export const MAX_BULK_QUOTA_PER_CHANNEL = Math.min(
+  MOCK_EMAIL_TARGETS.length,
+  MOCK_WEBHOOK_TARGETS.length,
+);
