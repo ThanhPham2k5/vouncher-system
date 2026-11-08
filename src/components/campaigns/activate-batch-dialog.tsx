@@ -28,10 +28,7 @@ export function ActivateBatchDialog({
   onConfirm,
 }: ActivateBatchDialogProps) {
   // BE: lô BULK sinh một mã cho mỗi lượt quota, lô GENERIC sinh một mã dùng chung
-  const totalQuota = batch
-    ? quotaOf(batch.distributionChannels, "EMAIL") +
-      quotaOf(batch.distributionChannels, "WEBHOOK")
-    : 0;
+  const usage = batch?.maxUsageCount ?? 0;
 
   return (
     <Dialog open={!!batch} onOpenChange={(open) => !busy && onOpenChange(open)}>
@@ -59,7 +56,7 @@ export function ActivateBatchDialog({
                 : "Số lượt dùng tối đa:"}
             </span>
             <span className="font-mono font-semibold tabular-nums">
-              {formatNumber(totalQuota)}
+              {formatNumber(usage)}
             </span>
           </div>
         )}

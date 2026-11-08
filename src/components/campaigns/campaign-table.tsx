@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { Eye, MoreHorizontal, Pause, Pencil, Play, Rocket } from "lucide-react";
 import { CampaignStatusBadge } from "@/components/campaigns/campaign-status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +21,8 @@ import {
 import { formatDateTime } from "@/lib/campaigns/format";
 import type { CampaignView } from "@/lib/campaigns/types";
 import { formatNumber, formatPercent } from "@/lib/format";
+import { Eye, MoreHorizontal, Pause, Pencil, Play, Rocket } from "lucide-react";
+import Link from "next/link";
 
 interface CampaignTableProps {
   campaigns: CampaignView[];
@@ -49,13 +49,16 @@ export function CampaignTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Chiến dịch / ID</TableHead>
+          <TableHead className="whitespace-nowrap">Chiến dịch / ID</TableHead>
           <TableHead>Thời gian hiệu lực</TableHead>
-          <TableHead>Lô mã</TableHead>
-          <TableHead>Quy tắc liên kết</TableHead>
-          <TableHead className="w-56">Mã đã sử dụng</TableHead>
+          <TableHead className="whitespace-nowrap">Lô mã</TableHead>
+          <TableHead className="whitespace-nowrap">
+            <div className="w-32">Lượt dùng / tối đa</div>
+          </TableHead>
           <TableHead>Trạng thái</TableHead>
-          <TableHead className="text-right">Thao tác</TableHead>
+          <TableHead className="whitespace-nowrap text-center">
+            Thao tác
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -64,12 +67,15 @@ export function CampaignTable({
             (sum, b) => sum + b.generatedCount,
             0,
           );
+          const maxUsage = c.batches.reduce(
+            (sum, b) => sum + b.maxUsageCount,
+            0,
+          );
           const redeemed = c.batches.reduce(
             (sum, b) => sum + b.redeemedCount,
             0,
           );
-          const rules = Array.from(new Set(c.batches.map((b) => b.ruleId)));
-          const usedPct = generated === 0 ? 0 : (redeemed / generated) * 100;
+          const usedPct = maxUsage === 0 ? 0 : (redeemed / maxUsage) * 100;
           const busy = busyId === c.id;
 
           return (
@@ -97,24 +103,11 @@ export function CampaignTable({
                 </p>
               </TableCell>
 
-              <TableCell>
-                <div className="flex flex-wrap gap-1">
-                  {rules.map((ruleId) => (
-                    <span
-                      key={ruleId}
-                      className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
-                    >
-                      Rule #{ruleId}
-                    </span>
-                  ))}
-                </div>
-              </TableCell>
-
-              <TableCell>
-                <div className="space-y-1.5">
+              <TableCell className="whitespace-nowrap">
+                <div className="w-32 space-y-1.5">
                   <div className="flex justify-between text-xs tabular-nums">
                     <span>
-                      {formatNumber(redeemed)} / {formatNumber(generated)}
+                      {formatNumber(redeemed)} / {formatNumber(maxUsage)}
                     </span>
                     <span className="text-muted-foreground">
                       {formatPercent(usedPct)}
@@ -134,7 +127,7 @@ export function CampaignTable({
               </TableCell>
 
               <TableCell>
-                <div className="flex items-center justify-end gap-1">
+                <div className="flex items-center justify-center gap-1">
                   <Button asChild variant="ghost" size="sm">
                     <Link href={`/admin/campaigns/${c.id}`}>
                       <Eye />

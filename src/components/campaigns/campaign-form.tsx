@@ -63,6 +63,7 @@ type FormErrors = Record<string, string>;
 function emptyBatch(): VoucherBatchInput {
   return {
     batchType: "GENERIC",
+    maxUsageCount: 1,
     ruleId: 0,
     durationValue: 14,
     durationUnit: "DAYS",
@@ -105,6 +106,7 @@ function toInput(c: CampaignView): CampaignInput {
       id: b.id,
       batchType: b.batchType,
       ruleId: b.ruleId,
+      maxUsageCount: b.maxUsageCount,
       durationValue: b.durationValue,
       durationUnit: b.durationUnit,
       codeConfig: {
@@ -588,25 +590,48 @@ export function BatchEditor({
           </div>
         </Field>
 
-        <Field label="Quota Email" error={err("quotaEmail")}>
-          <Input
-            type="number"
-            min={0}
-            value={batch.quotaEmail}
-            onChange={(e) => onChange({ quotaEmail: Number(e.target.value) })}
-            aria-invalid={!!err("quotaEmail")}
-          />
-        </Field>
+        {batch.batchType === "BULK" && (
+          <>
+            <Field label="Quota Email" error={err("quotaEmail")}>
+              <Input
+                type="number"
+                min={0}
+                value={batch.quotaEmail}
+                onChange={(e) =>
+                  onChange({ quotaEmail: Number(e.target.value) })
+                }
+                aria-invalid={!!err("quotaEmail")}
+              />
+            </Field>
 
-        <Field label="Quota Webhook" error={err("quotaWebhook")}>
-          <Input
-            type="number"
-            min={0}
-            value={batch.quotaWebhook}
-            onChange={(e) => onChange({ quotaWebhook: Number(e.target.value) })}
-            aria-invalid={!!err("quotaWebhook")}
-          />
-        </Field>
+            <Field label="Quota Webhook" error={err("quotaWebhook")}>
+              <Input
+                type="number"
+                min={0}
+                value={batch.quotaWebhook}
+                onChange={(e) =>
+                  onChange({ quotaWebhook: Number(e.target.value) })
+                }
+                aria-invalid={!!err("quotaWebhook")}
+              />
+            </Field>
+          </>
+        )}
+
+        {batch.batchType === "GENERIC" && (
+          <Field label="Số lần dùng tối đa" error={err("maxUsageCount")}>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={batch.maxUsageCount ?? ""}
+              onChange={(e) =>
+                onChange({ maxUsageCount: Number(e.target.value) })
+              }
+              aria-invalid={!!err("maxUsageCount")}
+            />
+          </Field>
+        )}
       </fieldset>
     </div>
   );

@@ -1,7 +1,6 @@
 "use client";
 
 import { ActivateBatchDialog } from "@/components/campaigns/activate-batch-dialog";
-import { BatchDetailDialog } from "@/components/campaigns/batch-detail-dialog";
 import { BatchEditDialog } from "@/components/campaigns/batch-edit-dialog";
 import { CampaignStatusBadge } from "@/components/campaigns/campaign-status-badge";
 import { PauseCampaignDialog } from "@/components/campaigns/pause-campaign-dialog";
@@ -54,7 +53,6 @@ import { formatNumber, formatPercent } from "@/lib/format";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import {
   ArrowLeft,
-  Eye,
   Loader2,
   MoreHorizontal,
   Pause,
@@ -76,9 +74,6 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
   const [busy, setBusy] = useState(false);
   const [batchPage, setBatchPage] = useState(1);
 
-  const [detailBatch, setDetailBatch] = useState<VoucherBatchResponse | null>(
-    null,
-  );
   const [editBatch, setEditBatch] = useState<VoucherBatchResponse | null>(null);
   const [activateBatch, setActivateBatch] =
     useState<VoucherBatchResponse | null>(null);
@@ -192,15 +187,16 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
     );
   }
 
-  const generated = campaign.batches.reduce(
-    (sum, b) => sum + b.generatedCount,
+  // generatedCount: số mã sinh ra. maxUsageCount: số lần dùng tối đa. redeemedCount: số lần đã dùng.
+  const maxUsage = campaign.batches.reduce(
+    (sum, b) => sum + b.maxUsageCount,
     0,
   );
   const redeemed = campaign.batches.reduce(
     (sum, b) => sum + b.redeemedCount,
     0,
   );
-  const usedPct = generated === 0 ? 0 : (redeemed / generated) * 100;
+  const usedPct = maxUsage === 0 ? 0 : (redeemed / maxUsage) * 100;
 
   const batchPageCount = pageCountOf(campaign.batches.length, BATCH_PAGE_SIZE);
   const safeBatchPage = clampPage(batchPage, batchPageCount);
@@ -293,17 +289,17 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
           <CardHeader>
             <CardTitle className="text-base">Tiến độ sử dụng</CardTitle>
             <CardDescription>
-              Số mã đã dùng so với số mã đã sinh
+              Số lượt đã dùng so với số lượt tối đa của các lô
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div>
-              <p className="text-sm text-muted-foreground">Mã đã sử dụng</p>
+              <p className="text-sm text-muted-foreground">Lượt đã dùng</p>
               <p className="text-2xl font-bold tabular-nums">
                 {formatNumber(redeemed)}
               </p>
               <p className="text-xs text-muted-foreground">
-                trên {formatNumber(generated)} mã đã sinh (
+                trên {formatNumber(maxUsage)} lượt tối đa (
                 {formatPercent(usedPct)})
               </p>
             </div>
@@ -319,9 +315,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            Danh sách lô mã (Voucher batches)
-          </CardTitle>
+          <CardTitle className="text-base">Danh sách lô mã</CardTitle>
           <CardDescription>
             Mỗi lô gắn với đúng một quy tắc áp dụng. Chỉ lô chưa sinh mã mới
             được chỉnh sửa.
@@ -335,19 +329,23 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                 <TableHead>Loại lô</TableHead>
                 <TableHead>Mã & tiền tố</TableHead>
                 <TableHead>Quy tắc</TableHead>
-                <TableHead className="w-56">Đã sinh / Đã dùng</TableHead>
+                <TableHead className="whitespace-nowrap">
+                  <div className="w-32">Đã dùng / Tối đa</div>
+                </TableHead>
                 <TableHead>Quota kênh</TableHead>
                 <TableHead>Hiệu lực</TableHead>
-                <TableHead className="w-32 text-right">Thao tác</TableHead>
+                <TableHead className="whitespace-nowrap text-center">
+                  Thao tác
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {batchItems.map((b) => {
                 const editable = b.status === "DRAFT";
                 const batchPct =
-                  b.generatedCount === 0
+                  b.maxUsageCount === 0
                     ? 0
-                    : (b.redeemedCount / b.generatedCount) * 100;
+                    : (b.redeemedCount / b.maxUsageCount) * 100;
                 return (
                   <TableRow key={b.id}>
                     <TableCell className="font-mono text-xs font-semibold">
@@ -368,14 +366,14 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                       </p>
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      Rule #{b.ruleId}
+                      Quy tắc #{b.ruleId}
                     </TableCell>
-                    <TableCell>
-                      <div className="space-y-1.5">
+                    <TableCell className="whitespace-nowrap">
+                      <div className="w-32 space-y-1.5">
                         <div className="flex justify-between text-xs tabular-nums">
                           <span>
                             {formatNumber(b.redeemedCount)} /{" "}
-                            {formatNumber(b.generatedCount)}
+                            {formatNumber(b.maxUsageCount)}
                           </span>
                           <span className="text-muted-foreground">
                             {formatPercent(batchPct)}
@@ -384,38 +382,37 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                         <div className="h-1.5 w-full rounded-full bg-muted">
                           <div
                             className="h-1.5 rounded-full bg-primary"
-                            style={{ width: `${batchPct}%` }}
+                            style={{ width: `${Math.min(100, batchPct)}%` }}
                           />
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-xs">
-                      <p>
-                        {DISTRIBUTION_LABEL.EMAIL}:{" "}
-                        {formatNumber(quotaOf(b.distributionChannels, "EMAIL"))}
-                      </p>
-                      <p>
-                        {DISTRIBUTION_LABEL.WEBHOOK}:{" "}
-                        {formatNumber(
-                          quotaOf(b.distributionChannels, "WEBHOOK"),
-                        )}
-                      </p>
+                      {b.batchType === "GENERIC" ? (
+                        <p className="text-muted-foreground">Không giới hạn</p>
+                      ) : (
+                        <>
+                          <p>
+                            {DISTRIBUTION_LABEL.EMAIL}:{" "}
+                            {formatNumber(
+                              quotaOf(b.distributionChannels, "EMAIL"),
+                            )}
+                          </p>
+                          <p>
+                            {DISTRIBUTION_LABEL.WEBHOOK}:{" "}
+                            {formatNumber(
+                              quotaOf(b.distributionChannels, "WEBHOOK"),
+                            )}
+                          </p>
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm">
                       {b.durationValue}{" "}
                       {DURATION_LABEL[b.durationUnit].toLowerCase()}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Chi tiết lô"
-                          aria-label={`Chi tiết lô #${b.id}`}
-                          onClick={() => setDetailBatch(b)}
-                        >
-                          <Eye />
-                        </Button>
+                    <TableCell>
+                      <div className="flex items-center justify-center gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -473,13 +470,6 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
           />
         </CardContent>
       </Card>
-
-      <BatchDetailDialog
-        batch={detailBatch}
-        onOpenChange={(open) => {
-          if (!open) setDetailBatch(null);
-        }}
-      />
 
       <BatchEditDialog
         batch={editBatch}

@@ -879,6 +879,7 @@ export const MOCK_BATCHES: VoucherBatchResponse[] = SPECS.flatMap((s) =>
       durationUnit,
       durationValue,
       generatedCount: generated,
+      maxUsageCount: generated,
       redeemedCount: redeemed,
       distributionChannels: {
         allocations: [

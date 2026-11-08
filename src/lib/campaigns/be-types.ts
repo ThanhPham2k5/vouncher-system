@@ -159,6 +159,7 @@ export interface VoucherBatchResponse {
   durationUnit: DurationUnit;
   durationValue: number;
   generatedCount: number; // do server tính
+  maxUsageCount: number;
   redeemedCount: number; // do server tính
   distributionChannels: DistributionChannels;
   status: BatchStatus;
@@ -171,6 +172,7 @@ export interface VoucherBatchCreateRequest {
   codeConfig: CodeConfig;
   durationUnit: DurationUnit;
   durationValue: number;
+  maxUsageCount?: number;
   // SPEC TYPO: spec ghi snake_case "distribution_channels", các trường khác là camelCase. Giữ theo spec.
   distribution_channels: DistributionChannels;
 }
@@ -180,6 +182,7 @@ export interface VoucherBatchUpdateRequest {
   codeConfig?: CodeConfig;
   durationUnit?: DurationUnit;
   durationValue?: number;
+  maxUsageCount?: number;
   distributionChannels?: DistributionChannels;
   status?: BatchStatus;
 }

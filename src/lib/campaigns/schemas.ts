@@ -6,7 +6,7 @@ import {
 } from "./be-types";
 import { MAX_BULK_QUOTA_PER_CHANNEL } from "./mock-data";
 
-export const CHARSETS = ["ALPHANUMERIC", "UPPERCASE", "NUMERIC"] as const;
+export const CHARSETS = ["ALPHANUMERIC", "ALPHABETIC"] as const;
 export type Charset = (typeof CHARSETS)[number];
 
 // Chuỗi từ <input type="datetime-local">: "YYYY-MM-DDTHH:mm"
@@ -44,8 +44,25 @@ export const voucherBatchInputSchema = z
     quotaWebhook: z
       .int({ error: "Quota phải là số nguyên" })
       .min(0, "Quota không âm"),
+    maxUsageCount: z
+      .int({ error: "Số lần dùng tối đa phải là số nguyên" })
+      .min(1, "Số lần dùng tối đa phải lớn hơn 0")
+      .optional(),
   })
   .superRefine((v, ctx) => {
+    // GENERIC: không nhập quota, chỉ nhập số lần dùng tối đa
+    if (v.batchType === "GENERIC") {
+      if (v.maxUsageCount === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Nhập số lần dùng tối đa",
+          path: ["maxUsageCount"],
+        });
+      }
+      return;
+    }
+
+    // BULK: nhập quota theo kênh, mỗi kênh không vượt số địa chỉ mẫu
     if (v.quotaEmail + v.quotaWebhook <= 0) {
       ctx.addIssue({
         code: "custom",
@@ -53,24 +70,19 @@ export const voucherBatchInputSchema = z
         path: ["quotaEmail"],
       });
     }
-
-    // BULK: mỗi mã gắn với một địa chỉ phân phối, nên quota không vượt số địa chỉ mẫu
-    // GENERIC: quota là số lần tối đa mã được dùng, không giới hạn ở đây
-    if (v.batchType === "BULK") {
-      if (v.quotaEmail > MAX_BULK_QUOTA_PER_CHANNEL) {
-        ctx.addIssue({
-          code: "custom",
-          message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho email`,
-          path: ["quotaEmail"],
-        });
-      }
-      if (v.quotaWebhook > MAX_BULK_QUOTA_PER_CHANNEL) {
-        ctx.addIssue({
-          code: "custom",
-          message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho webhook`,
-          path: ["quotaWebhook"],
-        });
-      }
+    if (v.quotaEmail > MAX_BULK_QUOTA_PER_CHANNEL) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho email`,
+        path: ["quotaEmail"],
+      });
+    }
+    if (v.quotaWebhook > MAX_BULK_QUOTA_PER_CHANNEL) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho webhook`,
+        path: ["quotaWebhook"],
+      });
     }
   });
 

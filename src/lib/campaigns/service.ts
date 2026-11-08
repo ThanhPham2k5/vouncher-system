@@ -23,6 +23,7 @@ import type {
   CampaignResponse,
   CampaignStatus,
   CampaignView,
+  DistributionChannels,
   VoucherBatchCreateRequest,
   VoucherBatchInput,
   VoucherBatchResponse,
@@ -60,6 +61,14 @@ function assertValid(input: CampaignInput): void {
   }
 }
 
+// GENERIC: quota các kênh đặt bằng 0, số lần dùng nằm ở maxUsageCount.
+// BULK: quota theo kênh, maxUsageCount do BE tự lấy bằng tổng quota.
+function channelsOf(input: VoucherBatchInput): DistributionChannels {
+  return input.batchType === "GENERIC"
+    ? toDistributionChannels({ quotaEmail: 0, quotaWebhook: 0 })
+    : toDistributionChannels(input);
+}
+
 function toCreateBatch(
   input: VoucherBatchInput,
   campaignId: number,
@@ -71,7 +80,10 @@ function toCreateBatch(
     codeConfig: { ...input.codeConfig },
     durationUnit: input.durationUnit,
     durationValue: input.durationValue,
-    distribution_channels: toDistributionChannels(input),
+    distribution_channels: channelsOf(input),
+    ...(input.batchType === "GENERIC"
+      ? { maxUsageCount: input.maxUsageCount }
+      : {}),
   };
 }
 
@@ -82,7 +94,10 @@ function toPatchBatch(input: VoucherBatchInput): VoucherBatchPatch {
     codeConfig: { ...input.codeConfig },
     durationUnit: input.durationUnit,
     durationValue: input.durationValue,
-    distributionChannels: toDistributionChannels(input),
+    distributionChannels: channelsOf(input),
+    ...(input.batchType === "GENERIC"
+      ? { maxUsageCount: input.maxUsageCount }
+      : {}),
   };
 }
 
@@ -91,17 +106,22 @@ function matchesBatch(
   current: VoucherBatchResponse,
   input: VoucherBatchInput,
 ): boolean {
-  const quotaOf = (channel: string): number =>
-    current.distributionChannels.allocations.find((a) => a.channel === channel)
-      ?.quota ?? 0;
-  return (
+  const same =
     current.ruleId === input.ruleId &&
     current.batchType === input.batchType &&
     current.codeConfig.prefix === input.codeConfig.prefix &&
     current.codeConfig.length === input.codeConfig.length &&
     current.codeConfig.charset === input.codeConfig.charset &&
     current.durationUnit === input.durationUnit &&
-    current.durationValue === input.durationValue &&
+    current.durationValue === input.durationValue;
+  if (input.batchType === "GENERIC") {
+    return same && current.maxUsageCount === input.maxUsageCount;
+  }
+  const quotaOf = (channel: string): number =>
+    current.distributionChannels.allocations.find((a) => a.channel === channel)
+      ?.quota ?? 0;
+  return (
+    same &&
     quotaOf("EMAIL") === input.quotaEmail &&
     quotaOf("WEBHOOK") === input.quotaWebhook
   );

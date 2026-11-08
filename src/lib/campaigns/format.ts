@@ -1,3 +1,4 @@
+import type { Charset } from "./schemas";
 import type {
   BatchStatus,
   BatchType,
@@ -7,7 +8,6 @@ import type {
   DurationUnit,
   RewardType,
 } from "./types";
-import type { Charset } from "./schemas";
 
 type StatusVariant = "success" | "warning" | "muted";
 
@@ -27,14 +27,13 @@ export const BATCH_STATUS_LABEL: Record<BatchStatus, string> = {
 };
 
 export const BATCH_TYPE_LABEL: Record<BatchType, string> = {
-  GENERIC: "Dùng chung 1 mã",
-  BULK: "Mã riêng (Bulk)",
+  GENERIC: "Mã dùng chung",
+  BULK: "Mã dùng riêng",
 };
 
 export const CHARSET_LABEL: Record<Charset, string> = {
   ALPHANUMERIC: "Chữ & số (A–Z, 0–9)",
-  UPPERCASE: "Chữ hoa (A–Z)",
-  NUMERIC: "Chỉ số (0–9)",
+  ALPHABETIC: "Chữ hoa (A–Z)",
 };
 
 export const DURATION_LABEL: Record<DurationUnit, string> = {
