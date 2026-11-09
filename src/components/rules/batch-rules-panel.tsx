@@ -1,8 +1,5 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Eye, Pencil, RefreshCw, Search } from "lucide-react";
-import { BatchRuleDetailDialog } from "@/components/rules/batch-rule-detail-dialog";
 import { BatchRuleDialog } from "@/components/rules/batch-rule-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,9 +21,10 @@ import type {
   RewardResponse,
   RuleMetadataResponse,
 } from "@/lib/campaigns/be-types";
-import type { VoucherBatchResponse } from "@/lib/campaigns/types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
+import { Pencil, RefreshCw, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 const PAGE_SIZE = 10;
 
@@ -35,7 +33,6 @@ interface BatchRulesPanelProps {
   rules: BatchRuleResponse[] | null;
   rewards: RewardResponse[] | null;
   conditions: ConditionResponse[] | null;
-  batches: VoucherBatchResponse[] | null;
   metadata: RuleMetadataResponse | null;
   loadError: string | null;
   onRetry: () => void;
@@ -53,7 +50,6 @@ export function BatchRulesPanel({
   rules,
   rewards,
   conditions,
-  batches,
   metadata,
   loadError,
   onRetry,
@@ -66,13 +62,11 @@ export function BatchRulesPanel({
     item: null,
     open: false,
   });
-  const [detail, setDetail] = useState<BatchRuleResponse | null>(null);
 
   const ready =
     rules !== null &&
     rewards !== null &&
     conditions !== null &&
-    batches !== null &&
     metadata !== null;
 
   function openEditor(item: BatchRuleResponse | null) {
@@ -82,15 +76,12 @@ export function BatchRulesPanel({
   // Nút thêm nằm ở header của trang (rules-view), tăng addTrigger để mở dialog
   useEffect(() => {
     if (addTrigger > 0) openEditor(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addTrigger]);
 
   const rewardName = (id: number) =>
     rewards?.find((r) => r.id === id)?.name ?? `Phần thưởng #${id}`;
   const conditionName = (id: number) =>
     conditions?.find((c) => c.id === id)?.name ?? `Điều kiện #${id}`;
-  const lotCountOf = (ruleId: number) =>
-    batches?.filter((b) => b.ruleId === ruleId).length ?? 0;
 
   const filtered = useMemo(() => {
     if (!rules) return [];
@@ -172,8 +163,7 @@ export function BatchRulesPanel({
                     <TableHead className="w-16">ID</TableHead>
                     <TableHead>Phần thưởng</TableHead>
                     <TableHead>Điều kiện</TableHead>
-                    <TableHead className="w-32">Lô đang dùng</TableHead>
-                    <TableHead className="w-44 text-right">Thao tác</TableHead>
+                    <TableHead className="w-44 text-center">Thao tác</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -188,20 +178,8 @@ export function BatchRulesPanel({
                       <TableCell className="font-medium">
                         {conditionName(r.conditionId)}
                       </TableCell>
-                      <TableCell className="tabular-nums">
-                        {lotCountOf(r.id)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDetail(r)}
-                            aria-label={`Chi tiết quy tắc lô #${r.id}`}
-                          >
-                            <Eye />
-                            Chi tiết
-                          </Button>
+                      <TableCell className="text-center">
+                        <div className="flex justify-center gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -238,19 +216,6 @@ export function BatchRulesPanel({
           conditions={conditions}
           onOpenChange={(open) => setEditor((prev) => ({ ...prev, open }))}
           onSaved={handleSaved}
-        />
-      )}
-
-      {ready && (
-        <BatchRuleDetailDialog
-          item={detail}
-          rewards={rewards}
-          conditions={conditions}
-          metadata={metadata}
-          lotCount={detail ? lotCountOf(detail.id) : 0}
-          onOpenChange={(open) => {
-            if (!open) setDetail(null);
-          }}
         />
       )}
     </div>

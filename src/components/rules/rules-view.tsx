@@ -28,18 +28,16 @@ import {
 } from "@/components/ui/table";
 import {
   getRuleMetadata,
+  listBatchRules,
   listConditions,
   listRewards,
-  listBatchRules,
 } from "@/lib/api/rule-engine";
-import { listVoucherBatches } from "@/lib/campaigns/service";
-import type { VoucherBatchResponse } from "@/lib/campaigns/types";
 import type {
+  BatchRuleResponse,
   ConditionResponse,
   RewardResponse,
   RuleMetadataResponse,
   RuleStatus,
-  BatchRuleResponse,
 } from "@/lib/campaigns/be-types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
@@ -54,8 +52,8 @@ const STATUS_BADGE: Record<
   RuleStatus,
   { label: string; variant: "success" | "muted" }
 > = {
-  PUBLISHED: { label: "Đã xuất bản", variant: "success" },
-  DRAFT: { label: "Nháp", variant: "muted" },
+  PUBLISHED: { label: "Đang chạy", variant: "success" },
+  DRAFT: { label: "Bản nháp", variant: "muted" },
 };
 
 function typeOf(kind: RuleKind, item: Item): string {
@@ -89,7 +87,6 @@ export function RulesView() {
   const [batchRules, setBatchRules] = useState<BatchRuleResponse[] | null>(
     null,
   );
-  const [batches, setBatches] = useState<VoucherBatchResponse[] | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -99,15 +96,13 @@ export function RulesView() {
       listConditions(),
       getRuleMetadata(),
       listBatchRules(),
-      listVoucherBatches(),
     ])
-      .then(([r, c, m, br, b]) => {
+      .then(([r, c, m, br]) => {
         if (!active) return;
         setRewards(r);
         setConditions(c);
         setMetadata(m);
         setBatchRules(br);
-        setBatches(b);
       })
       .catch(() => {
         if (active) setError("Không tải được danh sách quy tắc.");
@@ -258,7 +253,6 @@ export function RulesView() {
           rules={batchRules}
           rewards={rewards}
           conditions={conditions}
-          batches={batches}
           metadata={metadata}
           loadError={error}
           onRetry={() => setAttempt((n) => n + 1)}
@@ -341,10 +335,12 @@ export function RulesView() {
                       <TableRow>
                         <TableHead className="w-16">ID</TableHead>
                         <TableHead>Tên</TableHead>
-                        <TableHead>Loại</TableHead>
+                        <TableHead className="whitespace-nowrap">
+                          Loại
+                        </TableHead>
                         <TableHead>Cấu hình</TableHead>
                         <TableHead>Trạng thái</TableHead>
-                        <TableHead className="w-44 text-right">
+                        <TableHead className="w-44 text-center">
                           Thao tác
                         </TableHead>
                       </TableRow>
@@ -361,19 +357,19 @@ export function RulesView() {
                             <TableCell className="font-medium">
                               {it.name}
                             </TableCell>
-                            <TableCell className="text-sm">
+                            <TableCell className="whitespace-nowrap text-sm">
                               {labelOf(type)}
                             </TableCell>
                             <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
                               {summarizeConfig(kind, type, it.config)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="whitespace-nowrap">
                               <Badge variant={status.variant}>
                                 {status.label}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
+                            <TableCell className="text-center">
+                              <div className="flex justify-center gap-1">
                                 <Button
                                   variant="ghost"
                                   size="sm"

@@ -20,7 +20,7 @@ export interface StoreProduct {
   imageUrl: string;
 }
 
-const MOCK_PRODUCTS: StoreProduct[] = [
+export const MOCK_PRODUCTS: StoreProduct[] = [
   {
     sku: "SKU-EP01",
     name: "Tai nghe Bluetooth chống ồn Pro ANC",

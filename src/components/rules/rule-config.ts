@@ -7,15 +7,17 @@ import type {
   RewardResponse,
   RewardType,
 } from "@/lib/campaigns/be-types";
+import { MOCK_PRODUCTS } from "@/lib/store-products";
+import type { OptionItem } from "./option-multi-select";
 
 export type RuleKind = "REWARD" | "CONDITION";
 
 export interface FieldDef {
   key: string;
   label: string;
-  kind: "number" | "text" | "select" | "list" | "json";
+  kind: "number" | "text" | "select" | "multi" | "conditions";
   path: string[]; // vị trí trong config, ví dụ ["buy", "quantity"]
-  options?: { value: string; label: string }[];
+  options?: OptionItem[];
   placeholder?: string;
   hint?: string;
   min?: number; // số nhỏ nhất (bao gồm)
@@ -40,6 +42,24 @@ export interface TypeLayout {
 }
 
 const TIME_PATTERN = /^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/;
+
+const PRODUCT_OPTIONS: OptionItem[] = MOCK_PRODUCTS.map((p) => ({
+  value: p.sku,
+  label: p.name,
+  hint: p.sku,
+}));
+
+const SEGMENT_OPTIONS: OptionItem[] = [
+  { value: "VIP", label: "VIP" },
+  { value: "NORMAL", label: "NORMAL" },
+];
+
+// Loại điều kiện được phép dùng bên trong điều kiện kết hợp
+export const SUB_CONDITION_TYPES: ConditionType[] = [
+  "MIN_CART_AMOUNT",
+  "TIME_WINDOW",
+  "CUSTOMER_SEGMENT",
+];
 
 const REWARD_LAYOUTS: Record<RewardType, TypeLayout> = {
   PERCENTAGE: {
@@ -82,10 +102,10 @@ const REWARD_LAYOUTS: Record<RewardType, TypeLayout> = {
     fields: [
       {
         key: "buyProducts",
-        label: "Sản phẩm mua (mã, cách nhau bởi dấu phẩy)",
-        kind: "list",
+        label: "Sản phẩm mua",
+        kind: "multi",
         path: ["buy", "productIds"],
-        placeholder: "P-AO-01, P-AO-02",
+        options: PRODUCT_OPTIONS,
         required: true,
       },
       {
@@ -99,10 +119,10 @@ const REWARD_LAYOUTS: Record<RewardType, TypeLayout> = {
       },
       {
         key: "getProducts",
-        label: "Sản phẩm tặng (mã, cách nhau bởi dấu phẩy)",
-        kind: "list",
+        label: "Sản phẩm tặng",
+        kind: "multi",
         path: ["get", "productIds"],
-        placeholder: "P-TUI-CANVAS",
+        options: PRODUCT_OPTIONS,
         required: true,
       },
       {
@@ -239,10 +259,10 @@ const CONDITION_LAYOUTS: Record<ConditionType, TypeLayout> = {
       },
       {
         key: "segments",
-        label: "Nhóm khách hàng (cách nhau bởi dấu phẩy)",
-        kind: "list",
+        label: "Nhóm khách hàng",
+        kind: "multi",
         path: ["segments"],
-        placeholder: "VIP, LOYAL",
+        options: SEGMENT_OPTIONS,
         required: true,
       },
     ],
@@ -263,12 +283,10 @@ const CONDITION_LAYOUTS: Record<ConditionType, TypeLayout> = {
       },
       {
         key: "subConditions",
-        label: "Điều kiện con (JSON mảng)",
-        kind: "json",
+        label: "Điều kiện con",
+        kind: "conditions",
         path: ["conditions"],
-        placeholder:
-          '[{"type":"MIN_CART_AMOUNT","config":{"minimumAmount":0,"amountBasis":"CART_SUBTOTAL"}}]',
-        hint: "Mỗi phần tử: type là MIN_CART_AMOUNT, TIME_WINDOW hoặc CUSTOMER_SEGMENT; config đúng cấu trúc của loại đó.",
+        hint: "Mỗi điều kiện con chọn loại rồi nhập cấu hình như một điều kiện đơn.",
         required: true,
       },
     ],
@@ -294,6 +312,7 @@ export interface RuleForm {
   type: string;
   fields: Record<string, string>;
   rows: Record<string, string>[][]; // rows[i] tương ứng layout.rows[i]
+  subs: RuleForm[]; // chỉ dùng cho COMPOSITE: mỗi điều kiện con là một form CONDITION
 }
 
 function emptyRow(def: RowDef): Record<string, string> {
@@ -302,6 +321,7 @@ function emptyRow(def: RowDef): Record<string, string> {
 
 export function emptyForm(kind: RuleKind, type: string): RuleForm {
   const layout = layoutFor(kind, type);
+  const isComposite = kind === "CONDITION" && type === "COMPOSITE";
   return {
     name: "",
     type,
@@ -312,6 +332,7 @@ export function emptyForm(kind: RuleKind, type: string): RuleForm {
       ]),
     ),
     rows: (layout.rows ?? []).map((r) => [emptyRow(r)]),
+    subs: isComposite ? [emptyForm("CONDITION", "MIN_CART_AMOUNT")] : [],
   };
 }
 
@@ -324,26 +345,34 @@ function readPath(obj: unknown, path: string[]): unknown {
 }
 
 // Đổ config có sẵn vào form để sửa
-export function formFromItem(
+function fillFromConfig(
   kind: RuleKind,
-  item: RewardResponse | ConditionResponse,
+  type: string,
+  cfg: unknown,
+  name: string,
 ): RuleForm {
-  const type =
-    kind === "REWARD"
-      ? (item as RewardResponse).rewardType
-      : (item as ConditionResponse).conditionType;
   const layout = layoutFor(kind, type);
   const form = emptyForm(kind, type);
-  form.name = item.name;
-  const cfg = item.config;
+  form.name = name;
 
   for (const f of layout.fields) {
     const raw = readPath(cfg, f.path);
     if (raw === undefined || raw === null) continue;
-    if (f.kind === "list" && Array.isArray(raw)) {
-      form.fields[f.key] = raw.join(", ");
-    } else if (f.kind === "json") {
-      form.fields[f.key] = JSON.stringify(raw, null, 2);
+    if (f.kind === "conditions") {
+      if (Array.isArray(raw) && raw.length > 0) {
+        form.subs = raw.map((entry) =>
+          fillFromConfig(
+            "CONDITION",
+            String(readPath(entry, ["type"]) ?? ""),
+            readPath(entry, ["config"]),
+            "",
+          ),
+        );
+      }
+      continue;
+    }
+    if (f.kind === "multi" && Array.isArray(raw)) {
+      form.fields[f.key] = raw.map(String).join(", ");
     } else {
       form.fields[f.key] = String(raw);
     }
@@ -363,6 +392,17 @@ export function formFromItem(
     }
   });
   return form;
+}
+
+export function formFromItem(
+  kind: RuleKind,
+  item: RewardResponse | ConditionResponse,
+): RuleForm {
+  const type =
+    kind === "REWARD"
+      ? (item as RewardResponse).rewardType
+      : (item as ConditionResponse).conditionType;
+  return fillFromConfig(kind, type, item.config, item.name);
 }
 
 function setPath(obj: JsonObject, path: string[], value: unknown): void {
@@ -395,26 +435,18 @@ function parseField(
       return { error: `${def.label} không được lớn hơn ${def.max}` };
     return { value: n };
   }
-  if (def.kind === "list") {
-    const items = text
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+  if (def.kind === "multi") {
+    const items = Array.from(
+      new Set(
+        text
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ),
+    );
     if (items.length === 0 && def.required)
-      return { error: `Nhập ${def.label.toLowerCase()}` };
-    return { value: Array.from(new Set(items)) };
-  }
-  if (def.kind === "json") {
-    if (text === "") return { error: `Nhập ${def.label.toLowerCase()}` };
-    try {
-      const parsed: unknown = JSON.parse(text);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        return { error: `${def.label} phải là mảng có ít nhất 1 phần tử` };
-      }
-      return { value: parsed };
-    } catch {
-      return { error: `${def.label} không phải JSON hợp lệ` };
-    }
+      return { error: `Chọn ${def.label.toLowerCase()}` };
+    return { value: items };
   }
   if (def.required && text === "")
     return { error: `Nhập ${def.label.toLowerCase()}` };
@@ -427,22 +459,20 @@ export function buildConfig(kind: RuleKind, form: RuleForm): BuildResult {
   const config: JsonObject = { ...layout.constants };
 
   for (const f of layout.fields) {
+    if (f.kind === "conditions") {
+      if (form.subs.length === 0)
+        return { error: `${f.label}: cần ít nhất 1 điều kiện` };
+      const built: JsonObject[] = [];
+      for (const sub of form.subs) {
+        const res = buildConfig("CONDITION", sub);
+        if ("error" in res) return { error: `${f.label}: ${res.error}` };
+        built.push({ type: sub.type, config: res.config });
+      }
+      setPath(config, f.path, built);
+      continue;
+    }
     const parsed = parseField(f, form.fields[f.key] ?? "");
     if (parsed.error) return { error: parsed.error };
-    if (f.key === "subConditions") {
-      // Kiểm tra type con để báo lỗi sớm thay vì để BE trả 400
-      const allowed = ["MIN_CART_AMOUNT", "TIME_WINDOW", "CUSTOMER_SEGMENT"];
-      const bad = (parsed.value as Array<Record<string, unknown>>).find(
-        (c) =>
-          typeof c.type !== "string" ||
-          !allowed.includes(c.type) ||
-          typeof c.config !== "object",
-      );
-      if (bad)
-        return {
-          error: "Mỗi điều kiện con cần type hợp lệ và config là object",
-        };
-    }
     if (parsed.value !== undefined) setPath(config, f.path, parsed.value);
   }
 
@@ -508,9 +538,7 @@ export function summarizeConfig(
       return `Đơn từ ${Number(get(["minimumAmount"]) ?? 0).toLocaleString("vi-VN")} ₫`;
     case "TIME_WINDOW": {
       const windows = get(["windows"]);
-      return Array.isArray(windows)
-        ? `${windows.length} khung giờ · ${get(["timezone"])}`
-        : "—";
+      return Array.isArray(windows) ? `${windows.length} khung giờ` : "—";
     }
     case "CUSTOMER_SEGMENT": {
       const segs = get(["segments"]);
@@ -524,4 +552,72 @@ export function summarizeConfig(
     }
   }
   return "—";
+}
+
+export interface ConfigLine {
+  label: string;
+  value: string;
+}
+
+export interface ConfigSection {
+  title?: string;
+  lines: ConfigLine[];
+}
+
+function displayValue(def: FieldDef, raw: unknown): string {
+  if (raw === undefined || raw === null || raw === "") return "—";
+  if (Array.isArray(raw)) return raw.length ? raw.map(String).join(", ") : "—";
+  if (def.kind === "select")
+    return def.options?.find((o) => o.value === raw)?.label ?? String(raw);
+  if (typeof raw === "number") return raw.toLocaleString("vi-VN");
+  return String(raw);
+}
+
+// Dòng nội dung cho dialog chi tiết, cùng thứ tự với form sửa
+export function configSections(
+  kind: RuleKind,
+  type: string,
+  config: JsonObject,
+): ConfigSection[] {
+  const layout = layoutFor(kind, type);
+  const sections: ConfigSection[] = [];
+
+  const plain = layout.fields.filter((f) => f.kind !== "conditions");
+  if (plain.length > 0) {
+    sections.push({
+      lines: plain.map((f) => ({
+        label: f.label,
+        value: displayValue(f, readPath(config, f.path)),
+      })),
+    });
+  }
+
+  for (const f of layout.fields) {
+    if (f.kind !== "conditions") continue;
+    const list = readPath(config, f.path);
+    if (!Array.isArray(list)) continue;
+    list.forEach((entry, i) => {
+      const subType = String(readPath(entry, ["type"]) ?? "");
+      const subCfg = (readPath(entry, ["config"]) ?? {}) as JsonObject;
+      const lines = configSections("CONDITION", subType, subCfg).flatMap(
+        (s) => s.lines,
+      );
+      sections.push({ title: `${f.label} ${i + 1}`, lines });
+    });
+  }
+
+  for (const def of layout.rows ?? []) {
+    const list = readPath(config, def.path);
+    if (!Array.isArray(list)) continue;
+    list.forEach((entry, i) => {
+      sections.push({
+        title: `${def.label} ${i + 1}`,
+        lines: def.columns.map((c) => ({
+          label: c.label,
+          value: displayValue(c, readPath(entry, c.path)),
+        })),
+      });
+    });
+  }
+  return sections;
 }

@@ -1,8 +1,5 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { Loader2, Save } from "lucide-react";
-import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +24,9 @@ import type {
   ConditionResponse,
   RewardResponse,
 } from "@/lib/campaigns/be-types";
+import { Loader2, Save } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { toast } from "sonner";
 
 interface BatchRuleDialogProps {
   open: boolean;
@@ -35,6 +35,17 @@ interface BatchRuleDialogProps {
   conditions: ConditionResponse[];
   onOpenChange: (open: boolean) => void;
   onSaved: (saved: BatchRuleResponse) => void;
+}
+
+const BATCH_RULE_ERRORS: Record<string, string> = {
+  "Cannot update a rule that is currently in use by a generated voucher batch.":
+    "Quy tắc đang được dùng bởi lô mã đã sinh mã, không thể chỉnh sửa.",
+  "A batch rule with this reward and condition already exists.":
+    "Đã tồn tại quy tắc lô mã với phần thưởng và điều kiện này.",
+};
+
+function translateBatchRuleError(message: string): string {
+  return BATCH_RULE_ERRORS[message] ?? message;
 }
 
 // Đặt key theo lần mở ở nơi gọi để form reset
@@ -84,7 +95,7 @@ export function BatchRuleDialog({
     } catch (err) {
       setError(
         err instanceof Error
-          ? err.message
+          ? translateBatchRuleError(err.message)
           : "Không lưu được quy tắc, vui lòng thử lại.",
       );
     } finally {

@@ -1,6 +1,10 @@
 "use client";
 
-import { summarizeConfig, type RuleKind } from "@/components/rules/rule-config";
+import {
+  configSections,
+  summarizeConfig,
+  type RuleKind,
+} from "@/components/rules/rule-config";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -22,8 +26,8 @@ const STATUS_BADGE: Record<
   RuleStatus,
   { label: string; variant: "success" | "muted" }
 > = {
-  PUBLISHED: { label: "Đã xuất bản", variant: "success" },
-  DRAFT: { label: "Nháp", variant: "muted" },
+  PUBLISHED: { label: "Đang chạy", variant: "success" },
+  DRAFT: { label: "Bản nháp", variant: "muted" },
 };
 
 interface RuleDetailDialogProps {
@@ -48,6 +52,7 @@ export function RuleDetailDialog({
     kind === "REWARD" ? metadata?.rewardTypes : metadata?.conditionTypes;
   const typeLabel = types?.find((t) => t.type === type)?.label ?? type;
   const status = item ? STATUS_BADGE[item.status] : null;
+  const sections = item ? configSections(kind, type, item.config) : [];
 
   return (
     <Dialog open={!!item} onOpenChange={onOpenChange}>
@@ -73,14 +78,26 @@ export function RuleDetailDialog({
               <p>{summarizeConfig(kind, type, item.config)}</p>
             </div>
 
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Cấu hình (JSON)
-              </p>
-              <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
-                {JSON.stringify(item.config, null, 2)}
-              </pre>
-            </div>
+            {sections.map((section, i) => (
+              <div key={i} className="space-y-2 rounded-lg border p-4">
+                {section.title ? (
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {section.title}
+                  </p>
+                ) : null}
+                <dl className="space-y-2">
+                  {section.lines.map((line) => (
+                    <div
+                      key={line.label}
+                      className="grid gap-1 sm:grid-cols-[12rem_1fr] sm:gap-3"
+                    >
+                      <dt className="text-muted-foreground">{line.label}</dt>
+                      <dd className="break-words font-medium">{line.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
           </div>
         )}
       </DialogContent>
