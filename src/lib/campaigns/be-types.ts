@@ -263,7 +263,7 @@ export interface VoucherResponse {
 
 export interface CustomerVoucherResponse {
   id: number;
-  customerId: number;
+  customerId: string;
   voucherId: number;
   status: CustomerVoucherStatus;
   claimedAt: string;
@@ -271,7 +271,7 @@ export interface CustomerVoucherResponse {
 }
 
 export interface CustomerVoucherCreateRequest {
-  customerId: number;
+  customerId: string;
   voucherId: number;
   expiredAt: string | null;
 }

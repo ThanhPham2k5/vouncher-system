@@ -86,6 +86,13 @@ export const voucherBatchInputSchema = z
     }
   });
 
+const UNIT_MS: Record<string, number> = {
+  DAYS: 24 * 60 * 60 * 1000,
+  HOURS: 60 * 60 * 1000,
+  MINUTES: 60 * 1000,
+  SECONDS: 1000,
+};
+
 export const campaignInputSchema = z
   .object({
     name: z
@@ -97,9 +104,29 @@ export const campaignInputSchema = z
     endTime: dateTimeLocal,
     batches: z.array(voucherBatchInputSchema).min(1, "Cần ít nhất một lô mã"),
   })
-  .refine((v) => v.endTime > v.startTime, {
-    message: "Thời gian kết thúc phải sau thời gian bắt đầu",
-    path: ["endTime"],
+  .superRefine((v, ctx) => {
+    if (v.endTime <= v.startTime) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Thời gian kết thúc phải sau thời gian bắt đầu",
+        path: ["endTime"],
+      });
+      return;
+    }
+
+    // Thời hạn mỗi lô không được dài hơn thời gian chiến dịch
+    const campaignMs =
+      new Date(v.endTime).getTime() - new Date(v.startTime).getTime();
+    v.batches.forEach((b, i) => {
+      const unitMs = UNIT_MS[b.durationUnit];
+      if (unitMs && b.durationValue * unitMs > campaignMs) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Thời hạn lô không được vượt quá thời gian chiến dịch",
+          path: ["batches", i, "durationValue"],
+        });
+      }
+    });
   });
 
 export type CampaignInput = z.infer<typeof campaignInputSchema>;

@@ -1,15 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
-import { toast } from "sonner";
-import { VoucherDetailDialog } from "@/components/vouchers/voucher-detail-dialog";
-import {
-  WALLET_STATUS_META,
-  WALLET_STATUS_ORDER,
-} from "@/components/vouchers/voucher-status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,14 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  getVoucherByCode,
-  listCustomerVouchers,
-  listVouchers,
-} from "@/lib/api/vouchers";
+import { VoucherDetailDialog } from "@/components/vouchers/voucher-detail-dialog";
+import { getVoucherByCode, listVouchers } from "@/lib/api/vouchers";
 import type {
-  CustomerVoucherResponse,
-  CustomerVoucherStatus,
   VoucherBatchResponse,
   VoucherResponse,
 } from "@/lib/campaigns/be-types";
@@ -39,6 +25,9 @@ import { listCampaigns, listVoucherBatches } from "@/lib/campaigns/service";
 import type { CampaignView } from "@/lib/campaigns/types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
+import { RefreshCw, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 const PAGE_SIZE = 10;
 const ALL = "ALL";
@@ -47,7 +36,6 @@ interface LoadedData {
   vouchers: VoucherResponse[];
   campaigns: CampaignView[];
   batches: VoucherBatchResponse[];
-  wallet: CustomerVoucherResponse[];
 }
 
 export function VouchersView() {
@@ -65,14 +53,9 @@ export function VouchersView() {
   useEffect(() => {
     let active = true;
     setError(null);
-    Promise.all([
-      listVouchers(),
-      listCampaigns(),
-      listVoucherBatches(),
-      listCustomerVouchers(),
-    ])
-      .then(([vouchers, campaigns, batches, wallet]) => {
-        if (active) setData({ vouchers, campaigns, batches, wallet });
+    Promise.all([listVouchers(), listCampaigns(), listVoucherBatches()])
+      .then(([vouchers, campaigns, batches]) => {
+        if (active) setData({ vouchers, campaigns, batches });
       })
       .catch(() => {
         if (active) setError("Không tải được danh sách mã giảm giá.");
@@ -91,22 +74,6 @@ export function VouchersView() {
   const batchById = useMemo(() => {
     const map = new Map<number, VoucherBatchResponse>();
     data?.batches.forEach((b) => map.set(b.id, b));
-    return map;
-  }, [data]);
-
-  // Đếm trạng thái ví theo từng voucher
-  const walletCounts = useMemo(() => {
-    const map = new Map<number, Record<CustomerVoucherStatus, number>>();
-    data?.wallet.forEach((w) => {
-      const row = map.get(w.voucherId) ?? {
-        AVAILABLE: 0,
-        UNAVAILABLE: 0,
-        USED: 0,
-        EXPIRED: 0,
-      };
-      row[w.status] += 1;
-      map.set(w.voucherId, row);
-    });
     return map;
   }, [data]);
 
@@ -136,6 +103,7 @@ export function VouchersView() {
   const safePage = clampPage(page, pageCount);
   const pageItems = paginate(filtered, safePage, PAGE_SIZE);
 
+  // Tra cứu theo mã: mở dialog hiển thị ví khách hàng đang giữ mã
   async function handleLookup() {
     const code = lookupCode.trim();
     if (!code) return;
@@ -158,8 +126,8 @@ export function VouchersView() {
       <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Mã giảm giá</h1>
         <p className="text-sm text-muted-foreground">
-          Danh sách mã đã sinh từ các lô, kèm số lượng đang nằm trong ví khách
-          hàng.
+          Danh sách mã đã sinh từ các lô. Tra cứu theo mã để xem khách hàng nào
+          đang giữ mã đó.
         </p>
       </div>
 
@@ -282,57 +250,33 @@ export function VouchersView() {
                     <TableHead>Mã</TableHead>
                     <TableHead>Chiến dịch</TableHead>
                     <TableHead>Lô</TableHead>
-                    <TableHead>Trong ví khách</TableHead>
-                    <TableHead className="w-24 text-right">Thao tác</TableHead>
+                    <TableHead className="w-24 text-center">Thao tác</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pageItems.map((v) => {
-                    const counts = walletCounts.get(v.id);
-                    return (
-                      <TableRow key={v.id}>
-                        <TableCell className="font-mono text-sm font-semibold">
-                          {v.code}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {campaignName(v.campaignId)}
-                        </TableCell>
-                        <TableCell className="text-sm tabular-nums">
-                          #{v.batchId}
-                        </TableCell>
-                        <TableCell>
-                          {counts ? (
-                            <div className="flex flex-wrap gap-1">
-                              {WALLET_STATUS_ORDER.filter(
-                                (s) => counts[s] > 0,
-                              ).map((s) => (
-                                <Badge
-                                  key={s}
-                                  variant={WALLET_STATUS_META[s].variant}
-                                >
-                                  {WALLET_STATUS_META[s].label} {counts[s]}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">
-                              Chưa ai nhận
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDetail(v)}
-                            aria-label={`Xem ${v.code}`}
-                          >
-                            Chi tiết
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {pageItems.map((v) => (
+                    <TableRow key={v.id}>
+                      <TableCell className="font-mono text-sm font-semibold">
+                        {v.code}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {campaignName(v.campaignId)}
+                      </TableCell>
+                      <TableCell className="text-sm tabular-nums">
+                        #{v.batchId}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDetail(v)}
+                          aria-label={`Xem ${v.code}`}
+                        >
+                          Chi tiết
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>

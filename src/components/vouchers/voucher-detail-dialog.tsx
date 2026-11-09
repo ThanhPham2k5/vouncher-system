@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,6 +26,7 @@ import type {
 } from "@/lib/campaigns/be-types";
 import { formatDateTime } from "@/lib/campaigns/format";
 import { formatNumber } from "@/lib/format";
+import { useEffect, useState } from "react";
 import { WALLET_STATUS_META } from "./voucher-status";
 
 interface VoucherDetailDialogProps {
@@ -77,9 +77,13 @@ export function VoucherDetailDialog({
         {batch ? (
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div className="rounded-lg bg-muted/60 p-3">
-              <p className="text-xs text-muted-foreground">Đã cấp</p>
+              <p className="text-xs text-muted-foreground">
+                Số lượt sử dụng tối đa
+              </p>
               <p className="font-semibold tabular-nums">
-                {formatNumber(batch.generatedCount)}
+                {formatNumber(
+                  batch.batchType === "BULK" ? 1 : batch.maxUsageCount,
+                )}
               </p>
             </div>
             <div className="rounded-lg bg-muted/60 p-3">

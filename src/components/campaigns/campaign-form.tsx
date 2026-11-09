@@ -484,6 +484,7 @@ export function BatchEditor({
         <Field label="Loại lô (batchType)" error={err("batchType")}>
           <Select
             value={batch.batchType}
+            disabled={disabled}
             onValueChange={(v) => onChange({ batchType: v as BatchType })}
           >
             <SelectTrigger>
@@ -502,6 +503,7 @@ export function BatchEditor({
         <Field label="Quy tắc áp dụng (rule)" error={err("ruleId")}>
           <Select
             value={batch.ruleId ? String(batch.ruleId) : ""}
+            disabled={disabled}
             onValueChange={(v) => onChange({ ruleId: Number(v) })}
           >
             <SelectTrigger aria-invalid={!!err("ruleId")}>
@@ -541,6 +543,7 @@ export function BatchEditor({
         <Field label="Bộ ký tự (charset)" error={err("codeConfig.charset")}>
           <Select
             value={batch.codeConfig.charset}
+            disabled={disabled}
             onValueChange={(v) => setCode({ charset: v as Charset })}
           >
             <SelectTrigger>
@@ -571,6 +574,7 @@ export function BatchEditor({
             <div className="w-32">
               <Select
                 value={batch.durationUnit}
+                disabled={disabled}
                 onValueChange={(v) =>
                   onChange({ durationUnit: v as DurationUnit })
                 }
