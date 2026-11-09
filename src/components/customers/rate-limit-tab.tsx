@@ -1,8 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Pencil, Plus, Power, Search } from "lucide-react";
-import { toast } from "sonner";
+import { RateLimitDetailDialog } from "@/components/customers/rate-limit-detail-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,6 +29,9 @@ import {
 import { formatNumber } from "@/lib/format";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
+import { Eye, Pencil, Plus, Power, Search } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   ACTION_LABEL,
   LIMIT_SCOPE_LABEL,
@@ -58,6 +59,7 @@ export function RateLimitTab({
   const [activeFilter, setActiveFilter] = useState(ALL);
   const [page, setPage] = useState(1);
   const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<RateLimitConfigResponse | null>(null);
 
   const filtered = useMemo(() => {
     const q = normalizeSearch(search);
@@ -176,55 +178,56 @@ export function RateLimitTab({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-16">ID</TableHead>
-                  <TableHead>Tên</TableHead>
-                  <TableHead>Endpoint</TableHead>
-                  <TableHead>Phạm vi</TableHead>
-                  <TableHead>Giới hạn</TableHead>
-                  <TableHead>Khi vượt ngưỡng</TableHead>
-                  <TableHead className="w-20">Ưu tiên</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
+                  <TableHead className="w-16 whitespace-nowrap">ID</TableHead>
+                  <TableHead className="whitespace-nowrap">Tên</TableHead>
+                  <TableHead className="whitespace-nowrap">Phạm vi</TableHead>
+                  <TableHead className="whitespace-nowrap">Giới hạn</TableHead>
+                  <TableHead className="w-20 whitespace-nowrap">
+                    Ưu tiên
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    Trạng thái
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-center">
+                    Thao tác
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pageItems.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell className="font-mono text-xs tabular-nums">
+                    <TableCell className="whitespace-nowrap font-mono text-xs tabular-nums">
                       #{c.id}
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm font-medium">
+                    <TableCell className="whitespace-nowrap text-sm font-medium">
                       {c.name}
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {c.endpointPattern}
-                    </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="whitespace-nowrap text-sm">
                       {LIMIT_SCOPE_LABEL[c.scope]}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-sm tabular-nums">
                       {formatNumber(c.maxRequest)} request /{" "}
                       {formatNumber(c.timeWindowSeconds)}s
                     </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          c.actionOnExceed === "BLACKLIST"
-                            ? "destructive"
-                            : "warning"
-                        }
-                      >
-                        {ACTION_LABEL[c.actionOnExceed]}
-                      </Badge>
+                    <TableCell className="whitespace-nowrap tabular-nums">
+                      {c.priority}
                     </TableCell>
-                    <TableCell className="tabular-nums">{c.priority}</TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
                       <Badge variant={c.isActive ? "success" : "muted"}>
                         {c.isActive ? "Đang bật" : "Đã tắt"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                    <TableCell className="whitespace-nowrap text-center">
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDetail(c)}
+                          aria-label={`Chi tiết ${c.name}`}
+                        >
+                          <Eye />
+                          Chi tiết
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -258,6 +261,13 @@ export function RateLimitTab({
           onPageChange={setPage}
         />
       </Card>
+
+      <RateLimitDetailDialog
+        item={detail}
+        onOpenChange={(open) => {
+          if (!open) setDetail(null);
+        }}
+      />
     </div>
   );
 }

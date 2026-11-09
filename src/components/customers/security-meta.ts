@@ -33,7 +33,7 @@ export const LIMIT_SCOPE_LABEL: Record<LimitScope, string> = {
 };
 
 export const ACTION_LABEL: Record<ActionOnExceed, string> = {
-  REJECT_429: "Từ chối (429)",
+  REJECT_429: "Từ chối",
   BLACKLIST: "Đưa vào danh sách đen",
 };
 

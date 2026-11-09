@@ -1,8 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, Save } from "lucide-react";
-import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +30,9 @@ import {
   type LimitScope,
   type RateLimitConfigResponse,
 } from "@/lib/campaigns/be-types";
+import { Loader2, Save } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { ACTION_LABEL, LIMIT_SCOPE_LABEL } from "./security-meta";
 
 interface RateLimitDialogProps {
@@ -42,6 +42,8 @@ interface RateLimitDialogProps {
   onOpenChange: (open: boolean) => void;
   onSaved: (item: RateLimitConfigResponse) => void;
 }
+
+const REDEMPTION_ENDPOINT = "/redemptions";
 
 function parsePositiveInt(text: string): number | null {
   const n = Number(text);
@@ -56,9 +58,6 @@ export function RateLimitDialog({
   onSaved,
 }: RateLimitDialogProps) {
   const [name, setName] = useState(editing?.name ?? "");
-  const [endpointPattern, setEndpointPattern] = useState(
-    editing?.endpointPattern ?? "",
-  );
   const [scope, setScope] = useState<LimitScope>(
     editing?.scope ?? "CUSTOMER_ID",
   );
@@ -80,7 +79,6 @@ export function RateLimitDialog({
     const win = parsePositiveInt(windowSeconds);
     const prio = Number(priority);
     if (!name.trim()) return setError("Nhập tên cấu hình");
-    if (!endpointPattern.trim()) return setError("Nhập endpoint áp dụng");
     if (max === null) return setError("Số request tối đa phải từ 1 trở lên");
     if (win === null) return setError("Khung thời gian phải từ 1 giây trở lên");
     if (!Number.isInteger(prio))
@@ -91,7 +89,7 @@ export function RateLimitDialog({
     try {
       const body = {
         name: name.trim(),
-        endpointPattern: endpointPattern.trim(),
+        endpointPattern: REDEMPTION_ENDPOINT,
         limitScope: scope,
         maxRequest: max,
         timeWindowSeconds: win,
@@ -123,8 +121,8 @@ export function RateLimitDialog({
               : "Tạo cấu hình rate limit"}
           </DialogTitle>
           <DialogDescription>
-            Giới hạn số request trên từng endpoint theo khách hàng, thiết bị
-            hoặc IP.
+            Giới hạn số lần đổi mã (/redemptions) theo khách hàng, thiết bị hoặc
+            IP.
           </DialogDescription>
         </DialogHeader>
 
@@ -136,16 +134,6 @@ export function RateLimitDialog({
               value={name}
               placeholder="Giới hạn đổi mã theo khách hàng"
               onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="rl-endpoint">Endpoint</Label>
-            <Input
-              id="rl-endpoint"
-              value={endpointPattern}
-              placeholder="/redemptions"
-              onChange={(e) => setEndpointPattern(e.target.value)}
-              className="font-mono"
             />
           </div>
 
