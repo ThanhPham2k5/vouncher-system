@@ -29,6 +29,7 @@ import { RedemptionDetailDialog } from "@/components/store/redemption-detail-dia
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
 import { listStoreHistory, type RedemptionRecord } from "@/lib/store-history";
+import { toast } from "sonner";
 
 const ALL = "ALL";
 const PAGE_SIZE = 5;
@@ -36,7 +37,7 @@ const PAGE_SIZE = 5;
 const STATUS_OPTIONS = [
   { value: ALL, label: "Tất cả trạng thái" },
   { value: "SUCCESS", label: "Thành công" },
-  { value: "BLOCKED", label: "Bị chặn" },
+  { value: "BLOCKED", label: "Thất bại" },
 ];
 
 const PERIOD_OPTIONS = [
@@ -49,7 +50,7 @@ function formatVnd(value: number): string {
   return `${new Intl.NumberFormat("vi-VN").format(value)} ₫`;
 }
 
-export function HistoryView() {
+export function HistoryView({ customerId }: { customerId: string | null }) {
   const [records, setRecords] = useState<RedemptionRecord[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -60,14 +61,21 @@ export function HistoryView() {
 
   async function load() {
     setLoading(true);
-    const data = await listStoreHistory();
-    setRecords(data);
-    setLoading(false);
+    try {
+      setRecords(await listStoreHistory(customerId));
+    } catch (err) {
+      setRecords([]);
+      toast.error("Không tải được lịch sử áp mã", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     load();
-  }, []);
+  }, [customerId]);
 
   // Thống kê tính trên toàn bộ lịch sử, không theo bộ lọc
   const stats = useMemo(() => {
@@ -132,10 +140,10 @@ export function HistoryView() {
         />
         <StatCard
           icon={ShieldAlert}
-          label="Thất bại / Chặn"
+          label="Thất bại"
           value={String(stats.blocked)}
           unit={`lượt (${stats.blockedRate}%)`}
-          hint="Fraud Shield phát hiện"
+          hint="Không áp được mã"
           tone="destructive"
         />
         <StatCard
@@ -251,10 +259,7 @@ export function HistoryView() {
                         <Badge variant="success">Thành công</Badge>
                       ) : (
                         <div className="space-y-1">
-                          <Badge variant="destructive">Bị chặn (Fraud)</Badge>
-                          <p className="text-xs text-destructive">
-                            Lí do: {r.blockedReason}
-                          </p>
+                          <Badge variant="destructive">Thất bại</Badge>
                         </div>
                       )}
                     </TableCell>
@@ -284,21 +289,6 @@ export function HistoryView() {
           />
         </Card>
       )}
-
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="flex items-start gap-3 p-4">
-          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-          <div>
-            <p className="font-semibold">
-              Chính sách bảo mật PromoCloud Fraud Shield
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Mọi hành vi áp mã tự động hoặc sử dụng môi trường giả lập sẽ bị từ
-              chối để đảm bảo công bằng cho khách hàng.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
 
       <RedemptionDetailDialog
         record={detail}
