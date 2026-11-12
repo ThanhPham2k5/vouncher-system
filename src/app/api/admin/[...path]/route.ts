@@ -1,13 +1,13 @@
-import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
-import { BACKEND_URL } from "@/lib/config";
-import { ADMIN_ACCESS_COOKIE, ADMIN_REFRESH_COOKIE } from "@/lib/cookies";
 import {
   applyAdminCookies,
   clearAdminCookies,
   refreshBackendTokens,
   type BackendTokens,
 } from "@/lib/admin-session";
+import { BACKEND_URL } from "@/lib/config";
+import { ADMIN_ACCESS_COOKIE, ADMIN_REFRESH_COOKIE } from "@/lib/cookies";
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
 // Chỉ chuyển tiếp các đường dẫn BE đã có. Các đường dẫn khác trả 404.
 const ALLOWED_PATHS: RegExp[] = [
@@ -61,7 +61,10 @@ async function forward(req: Request, ctx: RouteContext): Promise<NextResponse> {
   }
 
   const search = new URL(req.url).search;
-  const body = req.method === "GET" ? undefined : await req.text();
+  const body =
+    req.method === "GET" || req.method === "DELETE"
+      ? undefined
+      : await req.text();
   const store = await cookies();
   const accessToken = store.get(ADMIN_ACCESS_COOKIE)?.value;
   const refreshToken = store.get(ADMIN_REFRESH_COOKIE)?.value;
@@ -111,5 +114,9 @@ export async function POST(req: Request, ctx: RouteContext) {
 }
 
 export async function PATCH(req: Request, ctx: RouteContext) {
+  return forward(req, ctx);
+}
+
+export async function DELETE(req: Request, ctx: RouteContext) {
   return forward(req, ctx);
 }

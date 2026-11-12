@@ -1,10 +1,5 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { Package, Search, ShoppingCart } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +14,11 @@ import {
   PRODUCT_CATEGORIES,
   type StoreProduct,
 } from "@/lib/store-products";
+import { Package, Search, ShoppingCart } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 const ALL = "Tất cả";
 const PAGE_SIZE = 8; // 4 cột x 2 hàng
@@ -225,11 +225,15 @@ export function ProductsView() {
                       {product.description}
                     </p>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-primary">
+                  <div className="flex flex-col gap-2">
+                    <span className="whitespace-nowrap font-semibold text-primary">
                       {formatVnd(product.price)}
                     </span>
-                    <Button size="sm" onClick={() => handleAdd(product)}>
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleAdd(product)}
+                    >
                       <ShoppingCart className="h-4 w-4" />
                       Thêm vào giỏ
                     </Button>

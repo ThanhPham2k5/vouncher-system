@@ -1,8 +1,9 @@
+import { BACKEND_URL } from "@/lib/config";
+import { STORE_SESSION_COOKIE } from "@/lib/cookies";
+import { customerIdOf, segmentsOfCustomerId } from "@/lib/store-customers";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { BACKEND_URL } from "@/lib/config";
-import { STORE_SESSION_COOKIE } from "@/lib/cookies";
 
 // Mã thiết bị ổn định cho trình duyệt, BE dùng để chặn gian lận theo thiết bị
 const DEVICE_COOKIE = "pc_store_device";
@@ -11,11 +12,12 @@ interface RedeemBody {
   voucherCode?: string;
   cartSubtotal?: number;
   items?: { productId: string; quantity: number; unitPrice: number }[];
+  deviceFingerprint?: string;
 }
 
 export async function POST(req: Request) {
   const store = await cookies();
-  const customerId = store.get(STORE_SESSION_COOKIE)?.value;
+  const customerId = customerIdOf(store.get(STORE_SESSION_COOKIE)?.value);
   if (!customerId) {
     return NextResponse.json(
       { message: "Vui lòng đăng nhập" },
@@ -36,7 +38,16 @@ export async function POST(req: Request) {
   }
 
   const existingDevice = store.get(DEVICE_COOKIE)?.value;
-  const deviceId = existingDevice ?? randomUUID();
+  const clientFingerprint =
+    typeof body.deviceFingerprint === "string" &&
+    /^[A-Za-z0-9_-]{8,128}$/.test(body.deviceFingerprint)
+      ? body.deviceFingerprint
+      : null;
+  const deviceId = clientFingerprint ?? existingDevice ?? randomUUID();
+  const clientIp =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "";
 
   let upstream: Response;
   try {
@@ -45,10 +56,13 @@ export async function POST(req: Request) {
       headers: {
         "Content-Type": "application/json",
         "X-Device-Fingerprint": deviceId,
+        ...(clientIp ? { "X-Forwarded-For": clientIp } : {}),
       },
       body: JSON.stringify({
         voucherCode: body.voucherCode,
         customerId,
+        // Phân khúc lấy từ session phía server, không tin giá trị do client gửi lên
+        customerSegments: segmentsOfCustomerId(customerId),
         cartSubtotal: body.cartSubtotal,
         items: body.items,
       }),

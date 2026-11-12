@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { CheckoutView } from "@/components/store/checkout-view";
 import { StoreHeader } from "@/components/store/store-header";
 import { STORE_SESSION_COOKIE } from "@/lib/cookies";
+import { customerIdOf } from "@/lib/store-customers";
 
 export default async function StoreCheckoutPage() {
   const username = (await cookies()).get(STORE_SESSION_COOKIE)?.value;
@@ -17,10 +18,10 @@ export default async function StoreCheckoutPage() {
             Thanh toán và áp mã khuyến mãi
           </h1>
           <p className="text-sm text-muted-foreground">
-            Kiểm tra giỏ hàng, áp mã giảm giá và xác nhận đặt hàng.
+            Kiểm tra giỏ hàng, chọn mã giảm giá trong kho và xác nhận đặt hàng.
           </p>
         </div>
-        <CheckoutView />
+        <CheckoutView customerId={customerIdOf(username)} />
       </main>
     </div>
   );

@@ -81,7 +81,7 @@ export const MOCK_PRODUCTS: StoreProduct[] = [
     sku: "SKU-MS08",
     name: "Chuột Gaming siêu nhẹ Wireless 2.4G",
     description: "Trọng lượng chỉ 58g, cảm biến PAW3395",
-    price: 550000,
+    price: 200000,
     category: "Điện tử",
     imageUrl: "/store/products/SKU-MS08.svg",
   },

@@ -263,17 +263,17 @@ export interface VoucherResponse {
 
 export interface CustomerVoucherResponse {
   id: number;
-  customerId: string;
+  customerId: string; // BE: String
   voucherId: number;
+  voucherCode: string;
   status: CustomerVoucherStatus;
   claimedAt: string;
   expiredAt: string | null;
 }
 
 export interface CustomerVoucherCreateRequest {
-  customerId: string;
+  customerId: string; // BE: String
   voucherId: number;
-  expiredAt: string | null;
 }
 
 export interface CustomerVoucherUpdateRequest {

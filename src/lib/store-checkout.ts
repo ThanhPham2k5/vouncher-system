@@ -1,6 +1,7 @@
 // Tính thử giảm giá ở client (chỉ để hiển thị). Số tiền chính thức do BE trả về khi xác nhận.
 import type { CartItem } from "./store-cart";
 import type { StoreVoucher } from "./store-vouchers";
+import { getDeviceFingerprint } from "@/lib/device-fingerprint";
 
 export interface DiscountPreview {
   applicable: boolean;
@@ -51,17 +52,20 @@ export interface RedeemResult {
 }
 
 // Gọi BFF /api/store/redeem, BFF chuyển tiếp sang BE POST /redemptions
+// Gọi BFF /api/store/redeem, BFF chuyển tiếp sang BE POST /redemptions
 export async function submitRedemption(
   voucherCode: string,
   items: CartItem[],
   subtotal: number,
 ): Promise<RedeemResult> {
+  const deviceFingerprint = await getDeviceFingerprint();
   const res = await fetch("/api/store/redeem", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       voucherCode,
       cartSubtotal: subtotal,
+      deviceFingerprint,
       items: items.map((item) => ({
         productId: item.sku,
         quantity: item.quantity,

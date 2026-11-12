@@ -1,23 +1,20 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import {
-  CheckCircle2,
-  Minus,
-  Package,
-  Plus,
-  ShoppingBag,
-  Ticket,
-  Trash2,
-} from "lucide-react";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { listCustomerVouchers } from "@/lib/api/vouchers";
+import type { CustomerVoucherResponse } from "@/lib/campaigns/be-types";
+import {
+  addToCart,
   clearCart,
   removeFromCart,
   setCartQuantity,
@@ -26,14 +23,32 @@ import {
 } from "@/lib/store-cart";
 import {
   formatVnd,
-  previewDiscount,
   submitRedemption,
   type RedeemResult,
 } from "@/lib/store-checkout";
-import { listStoreProducts } from "@/lib/store-products";
-import { listStoreVouchers, type StoreVoucher } from "@/lib/store-vouchers";
+import {
+  loadWalletRules,
+  previewWalletRule,
+  type WalletPreview,
+  type WalletRule,
+} from "@/lib/store-checkout-rules";
+import { segmentsOfCustomerId } from "@/lib/store-customers";
+import { listStoreProducts, type StoreProduct } from "@/lib/store-products";
+import {
+  CheckCircle2,
+  Minus,
+  Package,
+  Plus,
+  ShoppingBag,
+  Trash2,
+} from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 const MAX_QUANTITY = 99;
+const NONE = "NONE";
 
 // Trạng thái lỗi gắn với đường dẫn ảnh, nên khi ảnh mới đến (sau khi tải danh sách) vẫn hiển thị được
 function ItemImage({ src, alt }: { src?: string; alt: string }) {
@@ -148,64 +163,151 @@ function CartRow({ item, imageUrl }: { item: CartItem; imageUrl?: string }) {
   );
 }
 
-export function CheckoutView() {
+// Sản phẩm tặng: số lượng tặng đã được tính theo số lần áp dụng trong giỏ
+function GiftPicker({
+  skus,
+  products,
+  units,
+  onAdd,
+}: {
+  skus: string[];
+  products: StoreProduct[];
+  units: number;
+  onAdd: (product: StoreProduct, units: number) => void;
+}) {
+  const list = products.filter((p) => skus.includes(p.sku));
+  if (list.length === 0) return null;
+
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        Chọn sản phẩm tặng • được tặng {units} sản phẩm
+      </p>
+      <ul className="space-y-2">
+        {list.map((p) => (
+          <li
+            key={p.sku}
+            className="flex items-center justify-between gap-2 text-sm"
+          >
+            <span className="min-w-0 truncate">{p.name}</span>
+            <Button size="sm" variant="outline" onClick={() => onAdd(p, units)}>
+              Thêm {units} vào giỏ
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+interface CheckoutViewProps {
+  customerId: string | null;
+}
+
+export function CheckoutView({ customerId }: CheckoutViewProps) {
   const { items, subtotal } = useStoreCart();
-  const [imageBySku, setImageBySku] = useState<Record<string, string>>({});
-  const [vouchers, setVouchers] = useState<StoreVoucher[]>([]);
-  const [codeInput, setCodeInput] = useState("");
-  const [applied, setApplied] = useState<StoreVoucher | null>(null);
+  const [productList, setProductList] = useState<StoreProduct[]>([]);
+  // Quy tắc thật của các mã khách đang có trong kho
+  const [walletRules, setWalletRules] = useState<WalletRule[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [selectedCode, setSelectedCode] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<RedeemResult | null>(null);
 
   useEffect(() => {
     let active = true;
-    Promise.all([listStoreProducts(), listStoreVouchers()]).then(
-      ([products, list]) => {
-        if (!active) return;
-        setImageBySku(
-          Object.fromEntries(products.map((p) => [p.sku, p.imageUrl])),
-        );
-        setVouchers(list);
-      },
-    );
+    (async () => {
+      const [products, owned] = await Promise.all([
+        listStoreProducts(),
+        customerId
+          ? listCustomerVouchers({ customerId, status: "AVAILABLE" })
+          : Promise.resolve<CustomerVoucherResponse[]>([]),
+      ]);
+      const rules = await loadWalletRules(
+        new Set(owned.map((w) => w.voucherId)),
+      );
+      if (!active) return;
+      setProductList(products);
+      setWalletRules(rules);
+    })()
+      .catch(() => {
+        if (active) toast.error("Không tải được kho mã");
+      })
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
     return () => {
       active = false;
     };
-  }, []);
+  }, [customerId]);
 
-  const preview = useMemo(
-    () => (applied ? previewDiscount(applied, subtotal) : null),
-    [applied, subtotal],
+  const imageBySku = useMemo(
+    () => Object.fromEntries(productList.map((p) => [p.sku, p.imageUrl])),
+    [productList],
   );
 
-  const discount = preview?.applicable ? preview.discount : 0;
-  const finalAmount = subtotal - discount;
+  // Xem thử từng mã theo giỏ hiện tại, cập nhật khi giỏ thay đổi
+  const customerSegments = useMemo(
+    () => segmentsOfCustomerId(customerId),
+    [customerId],
+  );
 
-  function handleApply() {
-    const code = codeInput.trim().toUpperCase();
-    if (!code) return;
-    const found = vouchers.find((v) => v.code === code);
-    if (!found) {
-      toast.error("Mã không tồn tại", { description: code });
+  const previews = useMemo(() => {
+    const map = new Map<string, WalletPreview>();
+    for (const rule of walletRules) {
+      map.set(
+        rule.code,
+        previewWalletRule(rule, items, subtotal, customerSegments),
+      );
+    }
+    return map;
+  }, [walletRules, items, subtotal, customerSegments]);
+
+  const selectedRule = walletRules.find((r) => r.code === selectedCode);
+  const selectedPreview = selectedCode ? previews.get(selectedCode) : undefined;
+  const blocked = selectedPreview?.applicable === false;
+  const discount = selectedPreview && !blocked ? selectedPreview.discount : 0;
+  const finalAmount = subtotal - discount;
+  const cartQty = Object.fromEntries(items.map((i) => [i.sku, i.quantity]));
+  const giftUnits = selectedPreview?.buyGet
+    ? selectedPreview.buyGet.getQuantity *
+      Math.max(1, selectedPreview.buyGet.applications)
+    : 0;
+  // Tổng số lượng sản phẩm thuộc nhóm tặng đang có trong giỏ
+  const giftInCart = selectedPreview?.buyGet
+    ? selectedPreview.buyGet.getProductIds.reduce(
+        (sum, sku) => sum + (cartQty[sku] ?? 0),
+        0,
+      )
+    : 0;
+  const remainingUnits = Math.max(0, giftUnits - giftInCart);
+
+  function handleSelect(code: string) {
+    if (code === NONE) {
+      setSelectedCode("");
       return;
     }
-    const check = previewDiscount(found, subtotal);
-    if (!check.applicable) {
-      toast.error("Chưa thể áp mã", { description: check.reason });
-      return;
+    setSelectedCode(code);
+    if (previews.get(code)?.applicable !== false) {
+      toast.success("Đã chọn mã", { description: code });
     }
-    setApplied(found);
-    setCodeInput("");
-    toast.success("Đã áp dụng mã", { description: found.code });
+  }
+
+  function handleAddGift(product: StoreProduct, units: number) {
+    addToCart(product);
+    setCartQuantity(product.sku, (cartQty[product.sku] ?? 0) + units);
+    toast.success("Đã thêm sản phẩm tặng", {
+      description: `${product.name} × ${units}`,
+    });
   }
 
   async function handleConfirm() {
-    if (!applied || items.length === 0) return;
+    if (!selectedCode || blocked || items.length === 0) return;
     setSubmitting(true);
     try {
-      const data = await submitRedemption(applied.code, items, subtotal);
+      const data = await submitRedemption(selectedCode, items, subtotal);
       setResult(data);
-      setApplied(null);
+      setSelectedCode("");
       clearCart();
       toast.success("Đặt hàng thành công");
     } catch (err) {
@@ -299,46 +401,84 @@ export function CheckoutView() {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-2">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Ticket className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={codeInput}
-                  onChange={(e) => setCodeInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleApply();
-                  }}
-                  placeholder="Nhập mã, ví dụ FLASHSALE20"
-                  className="pl-9 font-mono uppercase"
-                  aria-label="Nhập mã giảm giá"
-                />
-              </div>
-              <Button
-                variant="outline"
-                onClick={handleApply}
-                disabled={!codeInput.trim()}
+            <Select
+              value={selectedCode || NONE}
+              onValueChange={handleSelect}
+              disabled={walletRules.length === 0}
+            >
+              <SelectTrigger
+                aria-label="Chọn mã trong kho"
+                className="font-mono"
               >
-                Áp dụng
-              </Button>
-            </div>
-            {applied && (
-              <div className="flex items-center justify-between rounded-md bg-primary/10 px-3 py-2 text-sm">
-                <span className="font-mono font-semibold">{applied.code}</span>
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                  onClick={() => setApplied(null)}
-                >
-                  Bỏ mã
-                </button>
-              </div>
-            )}
-            {preview?.giftNote && (
+                <SelectValue placeholder="Chọn mã từ kho" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Không áp mã</SelectItem>
+                {walletRules.map((rule) => (
+                  <SelectItem key={rule.code} value={rule.code}>
+                    {rule.code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {loaded && walletRules.length === 0 && (
               <p className="text-xs text-muted-foreground">
-                Quà tặng: {preview.giftNote}
+                Kho mã đang trống hoặc không có mã khả dụng. Lưu mã ở trang Săn
+                mã trước.
               </p>
             )}
           </div>
+
+          {selectedRule && (
+            <div className="space-y-2 rounded-md border p-3 text-sm">
+              <div>
+                <p className="font-medium">{selectedRule.rewardName}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedRule.headline}
+                </p>
+              </div>
+              <div className="border-t pt-2 text-xs">
+                <p className="mb-1 text-muted-foreground">
+                  {selectedRule.conditionName}
+                </p>
+                <ul className="space-y-0.5">
+                  {selectedRule.conditionLines.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {selectedRule && blocked && (
+            <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              {selectedPreview?.reason}
+            </p>
+          )}
+
+          {selectedRule?.rewardType === "BUY_X_GET_Y" &&
+            selectedPreview?.buyGet &&
+            remainingUnits > 0 && (
+              <GiftPicker
+                skus={selectedPreview.buyGet.getProductIds}
+                products={productList}
+                units={remainingUnits}
+                onAdd={handleAddGift}
+              />
+            )}
+
+          {selectedCode && (
+            <div className="flex items-center justify-between rounded-md bg-primary/10 px-3 py-2 text-sm">
+              <span className="font-mono font-semibold">{selectedCode}</span>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                onClick={() => setSelectedCode("")}
+              >
+                Bỏ mã
+              </button>
+            </div>
+          )}
 
           <div className="space-y-3 border-t pt-4 text-sm">
             <div className="flex justify-between">
@@ -352,7 +492,11 @@ export function CheckoutView() {
                   discount > 0 ? "text-primary" : "text-muted-foreground"
                 }
               >
-                {discount > 0 ? `-${formatVnd(discount)}` : "Chưa áp mã"}
+                {discount > 0
+                  ? `-${formatVnd(discount)}`
+                  : selectedCode && !blocked
+                    ? "Máy chủ tính khi đặt"
+                    : "Chưa áp mã"}
               </span>
             </div>
             <div className="flex items-end justify-between border-t pt-3">
@@ -363,14 +507,10 @@ export function CheckoutView() {
             </div>
           </div>
 
-          {applied && preview && !preview.applicable && (
-            <p className="text-xs text-destructive">{preview.reason}</p>
-          )}
-
           <Button
             className="w-full"
             size="lg"
-            disabled={!applied || submitting}
+            disabled={!selectedCode || blocked || submitting}
             onClick={handleConfirm}
           >
             {submitting
@@ -378,9 +518,9 @@ export function CheckoutView() {
               : `Đặt hàng • ${formatVnd(finalAmount)}`}
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            {applied
+            {selectedCode
               ? "Số tiền chính thức do máy chủ xác nhận khi đặt hàng."
-              : "Cần áp một mã giảm giá để đặt hàng."}
+              : "Có thể đặt hàng không cần mã, hoặc chọn một mã trong kho."}
           </p>
         </CardContent>
       </Card>

@@ -63,6 +63,13 @@ export function BatchRuleDialog({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Chỉ cho chọn phần thưởng và điều kiện đang PUBLISHED, giữ lại mục đang chọn khi sửa
+  const rewardOptions = rewards.filter(
+    (r) => r.status === "PUBLISHED" || String(r.id) === rewardId,
+  );
+  const conditionOptions = conditions.filter(
+    (c) => c.status === "PUBLISHED" || String(c.id) === conditionId,
+  );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -123,7 +130,7 @@ export function BatchRuleDialog({
                 <SelectValue placeholder="Chọn phần thưởng" />
               </SelectTrigger>
               <SelectContent>
-                {rewards.map((r) => (
+                {rewardOptions.map((r) => (
                   <SelectItem key={r.id} value={String(r.id)}>
                     {r.name}
                   </SelectItem>
@@ -139,7 +146,7 @@ export function BatchRuleDialog({
                 <SelectValue placeholder="Chọn điều kiện" />
               </SelectTrigger>
               <SelectContent>
-                {conditions.map((c) => (
+                {conditionOptions.map((c) => (
                   <SelectItem key={c.id} value={String(c.id)}>
                     {c.name}
                   </SelectItem>

@@ -5,6 +5,7 @@ import type {
   CustomerVoucherResponse,
   CustomerVoucherStatus,
   VoucherResponse,
+  CustomerVoucherCreateRequest,
 } from "@/lib/campaigns/be-types";
 import { adminRequest } from "./http";
 
@@ -50,4 +51,19 @@ export async function listCustomerVouchers(
   return filter.voucherId === undefined
     ? all
     : all.filter((w) => w.voucherId === filter.voucherId);
+}
+
+// POST /vouchers/customer: thêm mã vào ví khách. customerId do FE truyền vào vì BE không quản lý khách.
+export function createCustomerVoucher(
+  req: CustomerVoucherCreateRequest,
+): Promise<CustomerVoucherResponse> {
+  return adminRequest<CustomerVoucherResponse>("vouchers/customer", {
+    method: "POST",
+    body: req,
+  });
+}
+
+// DELETE /vouchers/customer/{id}: xóa mã khỏi ví khách
+export function deleteCustomerVoucher(id: number): Promise<void> {
+  return adminRequest<void>(`vouchers/customer/${id}`, { method: "DELETE" });
 }

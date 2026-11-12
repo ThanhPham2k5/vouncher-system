@@ -1,68 +1,107 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Banknote, Check, Gift, Percent, Plus, Search } from "lucide-react";
-import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PaginationBar } from "@/components/ui/pagination-bar";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  createCustomerVoucher,
+  listCustomerVouchers,
+} from "@/lib/api/vouchers";
+import type { CustomerVoucherResponse } from "@/lib/campaigns/be-types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
-import { useSavedCodes } from "@/lib/store-wallet";
 import {
-  listStoreVouchers,
-  saveStoreVoucher,
-  VOUCHER_KIND_LABEL,
-  type StoreVoucher,
-  type VoucherKind,
-} from "@/lib/store-vouchers";
+  CLAIM_KIND_LABEL,
+  listClaimableVouchers,
+  type ClaimableVoucher,
+  type ClaimKind,
+} from "@/lib/store-claimable-vouchers";
+import {
+  Banknote,
+  Check,
+  Gift,
+  Layers,
+  Percent,
+  Plus,
+  Search,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 const ALL = "ALL";
 const PAGE_SIZE = 6; // 3 cột x 2 hàng
-const FILTERS: { value: typeof ALL | VoucherKind; label: string }[] = [
+const FILTERS: { value: typeof ALL | ClaimKind; label: string }[] = [
   { value: ALL, label: "Tất cả" },
-  { value: "FIXED", label: VOUCHER_KIND_LABEL.FIXED },
-  { value: "PERCENT", label: VOUCHER_KIND_LABEL.PERCENT },
-  { value: "GIFT", label: VOUCHER_KIND_LABEL.GIFT },
+  { value: "FIXED", label: CLAIM_KIND_LABEL.FIXED },
+  { value: "PERCENT", label: CLAIM_KIND_LABEL.PERCENT },
+  { value: "GIFT", label: CLAIM_KIND_LABEL.GIFT },
+  { value: "TIERED", label: CLAIM_KIND_LABEL.TIERED },
 ];
 
-const KIND_ICON: Record<VoucherKind, typeof Percent> = {
+const KIND_ICON: Record<ClaimKind, typeof Percent> = {
   PERCENT: Percent,
   FIXED: Banknote,
   GIFT: Gift,
+  TIERED: Layers,
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("vi-VN");
+interface VouchersViewProps {
+  customerId: string | null;
 }
 
-export function VouchersView() {
-  const [vouchers, setVouchers] = useState<StoreVoucher[] | null>(null);
+export function VouchersView({ customerId }: VouchersViewProps) {
+  const [vouchers, setVouchers] = useState<ClaimableVoucher[] | null>(null);
+  const [wallet, setWallet] = useState<CustomerVoucherResponse[] | null>(null);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<typeof ALL | VoucherKind>(ALL);
+  const [filter, setFilter] = useState<typeof ALL | ClaimKind>(ALL);
   const [page, setPage] = useState(1);
   const [savingCode, setSavingCode] = useState<string | null>(null);
-  const saved = useSavedCodes();
 
   useEffect(() => {
     let active = true;
-    listStoreVouchers().then((data) => {
-      if (active) setVouchers(data);
-    });
+    Promise.all([
+      listClaimableVouchers(),
+      customerId
+        ? listCustomerVouchers({ customerId })
+        : Promise.resolve<CustomerVoucherResponse[]>([]),
+    ])
+      .then(([list, owned]) => {
+        if (!active) return;
+        setVouchers(list);
+        setWallet(owned);
+      })
+      .catch(() => {
+        if (!active) return;
+        setVouchers([]);
+        setWallet([]);
+        toast.error("Không tải được danh sách mã khuyến mãi");
+      });
     return () => {
       active = false;
     };
-  }, []);
+  }, [customerId]);
+
+  // Mã đã nằm trong ví của khách (lấy từ BE)
+  const savedCodes = useMemo(
+    () => new Set((wallet ?? []).map((w) => w.voucherCode)),
+    [wallet],
+  );
 
   const filtered = useMemo(() => {
     const q = normalizeSearch(query);
     return (vouchers ?? []).filter(
       (v) =>
         (filter === ALL || v.kind === filter) &&
-        matchesSearch(q, v.code, v.title, v.subtitle, v.headline, v.condition),
+        matchesSearch(
+          q,
+          v.code,
+          v.title,
+          v.subtitle,
+          v.headline,
+          v.conditions.join(" "),
+        ),
     );
   }, [vouchers, query, filter]);
 
@@ -70,11 +109,23 @@ export function VouchersView() {
   const safePage = clampPage(page, pageCount);
   const pageItems = paginate(filtered, safePage, PAGE_SIZE);
 
-  async function handleSave(voucher: StoreVoucher) {
+  async function handleSave(voucher: ClaimableVoucher) {
+    if (!customerId) {
+      toast.error("Vui lòng đăng nhập để lưu mã");
+      return;
+    }
     setSavingCode(voucher.code);
     try {
-      await saveStoreVoucher(voucher.code);
-      toast.success("Đã lưu mã vào kho", { description: voucher.code });
+      const created = await createCustomerVoucher({
+        customerId,
+        voucherId: voucher.voucherId,
+      });
+      setWallet((prev) => [...(prev ?? []), created]);
+      toast.success("Đã lưu mã vào ví", { description: voucher.code });
+    } catch (err) {
+      toast.error("Không lưu được mã", {
+        description: err instanceof Error ? err.message : "Vui lòng thử lại.",
+      });
     } finally {
       setSavingCode(null);
     }
@@ -144,49 +195,41 @@ export function VouchersView() {
           <div className="grid grid-cols-1 gap-5 p-4 md:grid-cols-2 lg:grid-cols-3">
             {pageItems.map((voucher) => {
               const Icon = KIND_ICON[voucher.kind];
-              const isSaved = saved.includes(voucher.code);
+              const isSaved = savedCodes.has(voucher.code);
               const isSaving = savingCode === voucher.code;
               return (
                 <Card key={voucher.code} className="flex flex-col">
                   <CardContent className="flex flex-1 flex-col gap-3 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          <Icon className="h-5 w-5" />
-                        </span>
-                        <div>
-                          <p className="font-semibold leading-tight">
-                            {voucher.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {voucher.subtitle}
-                          </p>
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <p className="font-semibold leading-tight">
+                          {voucher.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {voucher.subtitle}
+                        </p>
                       </div>
-                      {voucher.badge && (
-                        <Badge variant="muted">{voucher.badge}</Badge>
-                      )}
                     </div>
 
                     <div className="space-y-1">
                       <p className="text-xl font-bold text-primary">
                         {voucher.headline}
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        {voucher.detail}
-                      </p>
                     </div>
 
-                    <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                      {voucher.condition}
-                    </p>
+                    <div className="space-y-1 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground">Điều kiện</p>
+                      {voucher.conditions.map((line, i) => (
+                        <p key={i}>{line}</p>
+                      ))}
+                    </div>
 
-                    <div className="mt-auto flex items-center justify-between gap-2 border-t pt-3">
+                    <div className="mt-auto border-t pt-3">
                       <span className="font-mono text-xs font-semibold">
                         #{voucher.code}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        HSD: {formatDate(voucher.expiresAt)}
                       </span>
                     </div>
 

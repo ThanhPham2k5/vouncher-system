@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
 import { STORE_SESSION_COOKIE } from "@/lib/cookies";
+import { MOCK_CUSTOMERS } from "@/lib/store-customers";
 
-// TẠM THỜI: backend chưa có API đăng nhập khách hàng.
-// Dùng tài khoản mock để làm luồng giao diện. Khi backend có API thật, thay phần này bằng cách gọi BACKEND_URL.
-const MOCK_CUSTOMERS: Record<
-  string,
-  { password: string; tier: "VIP" | "NORMAL" }
-> = {
-  nguyenvana: { password: "123456", tier: "VIP" },
-  tranthib: { password: "123456", tier: "NORMAL" },
-};
-
+// TẠM THỜI: backend chưa có API đăng nhập khách hàng. Dùng tài khoản mock trong lib/store-customers.ts.
+// Cookie lưu username, customerId được tra từ username khi cần gọi BE.
 export async function POST(req: Request) {
   const body: { username?: string; password?: string } = await req
     .json()

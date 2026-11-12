@@ -13,7 +13,7 @@ type Query = Record<string, string | number | boolean | undefined>;
 export async function adminRequest<T>(
   path: string,
   options: {
-    method?: "GET" | "POST" | "PATCH";
+    method?: "GET" | "POST" | "PATCH" | "DELETE";
     body?: unknown;
     query?: Query;
   } = {},
