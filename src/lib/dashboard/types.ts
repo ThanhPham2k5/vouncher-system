@@ -18,12 +18,14 @@ export interface CampaignPerformance {
   revenue: number; // doanh thu thu về (final amount)
   issued: number; // số mã đã sinh
   redeemed: number; // số mã đã dùng
+  distributed?: number; // số lượt đã phân phối (PENDING/SENT), optional để mock-data không lỗi
 }
 
 export interface DailyPoint {
   label: string;
   revenue: number;
   cost: number;
+  redemptions?: number;
 }
 
 export interface FraudReason {

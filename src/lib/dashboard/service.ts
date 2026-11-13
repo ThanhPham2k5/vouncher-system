@@ -2,8 +2,8 @@ import { fetchCampaigns } from "@/lib/api/campaigns";
 import { listFraudLogs } from "@/lib/api/fraud";
 import { listRedemptionLogs } from "@/lib/api/redemptions";
 import {
-  getCampaignIncrementalRevenue,
-  getCampaignRedemptionRate,
+  getDashboardOverview,
+  getRevenueTimeSeries,
 } from "@/lib/api/statistics";
 import { listVoucherBatches } from "@/lib/api/voucher-batches";
 import type {
@@ -18,80 +18,92 @@ import type {
   FraudSummary,
 } from "./types";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const pad = (n: number) => String(n).padStart(2, "0");
+// BE tính bucket và khoảng thời gian theo múi giờ này. Mọi mốc gửi lên BE dùng cùng múi giờ.
+const SERVER_TZ = "Asia/Ho_Chi_Minh";
+const DAY_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SERVER_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-function monthKey(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-}
-function dayLabel(d: Date): string {
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
-}
-function monthLabel(d: Date): string {
-  return `${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+function serverDay(now: Date): string {
+  return DAY_FORMAT.format(now);
 }
 
-// Mốc bắt đầu khoảng thời gian, null nghĩa là toàn bộ thời gian
-function rangeStart(range: DateRange, now: Date): number | null {
-  if (range === "all") return null;
-  return now.getTime() - (range === "7d" ? 7 : 30) * DAY_MS;
+function shiftDay(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
-// BE trả LocalDateTime (không có múi giờ), Date.parse hiểu theo giờ địa phương
-function inRange(createAt: string, start: number | null): boolean {
-  if (start === null) return true;
+// Khoảng [from, to) gửi lên BE, đều là 00:00 theo giờ server
+function rangeBounds(
+  range: DateRange,
+  now: Date,
+): { from: string; to: string } {
+  const today = serverDay(now);
+  const to = `${shiftDay(today, 1)}T00:00:00`;
+  if (range === "7d") {
+    return { from: `${shiftDay(today, -6)}T00:00:00`, to };
+  }
+  if (range === "month") {
+    return { from: `${today.slice(0, 8)}01T00:00:00`, to };
+  }
+  // "all": BE giới hạn 366 ngày cho granularity DAY
+  return { from: `${shiftDay(today, -365)}T00:00:00`, to };
+}
+
+// Biểu đồ: theo ngày (7 ngày, tháng này) hoặc theo tháng (12 tháng qua).
+// BE đã điền các ngày trống bằng 0.
+async function fetchDailySeries(
+  range: DateRange,
+  now: Date,
+): Promise<DailyPoint[]> {
+  const { from, to } = rangeBounds(range, now);
+  const series = await getRevenueTimeSeries({ granularity: "DAY", from, to });
+
+  const monthly = range === "all";
+  const points = new Map<string, DailyPoint>();
+
+  for (const p of series.points) {
+    const y = p.bucket.slice(0, 4);
+    const m = p.bucket.slice(5, 7);
+    const d = p.bucket.slice(8, 10);
+    const key = monthly ? `${y}-${m}` : `${y}-${m}-${d}`;
+    const point = points.get(key) ?? {
+      label: monthly ? `${m}/${y}` : `${d}/${m}`,
+      revenue: 0,
+      cost: 0,
+      redemptions: 0,
+    };
+    point.revenue += p.finalAmount;
+    point.cost += p.discountAmount;
+    point.redemptions = (point.redemptions ?? 0) + p.redemptionCount;
+    points.set(key, point);
+  }
+
+  return [...points.values()];
+}
+
+// Mốc bắt đầu cho thống kê fraud. BE trả LocalDateTime nên Date.parse hiểu theo giờ địa phương.
+function fraudStart(range: DateRange, now: Date): number {
+  return Date.parse(rangeBounds(range, now).from);
+}
+
+function inRange(createAt: string, start: number): boolean {
   const t = Date.parse(createAt);
   return !Number.isNaN(t) && t >= start;
 }
 
-// Biểu đồ: 7 hoặc 30 ngày theo ngày, toàn thời gian theo tháng. Chỉ tính đơn SUCCESS.
-function buildDaily(
-  logs: RedemptionLogResponse[],
-  range: DateRange,
-  now: Date,
-): DailyPoint[] {
-  const monthly = range === "all";
-  const start = rangeStart(range, now);
-  const points = new Map<string, DailyPoint>();
-
-  if (!monthly) {
-    const days = range === "7d" ? 7 : 30;
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * DAY_MS);
-      points.set(dayKey(d), { label: dayLabel(d), revenue: 0, cost: 0 });
-    }
-  }
-
-  for (const log of logs) {
-    if (log.status !== "SUCCESS" || !inRange(log.createAt, start)) continue;
-    const at = new Date(log.createAt);
-    const key = monthly ? monthKey(at) : dayKey(at);
-    const point = points.get(key) ?? {
-      label: monthly ? monthLabel(at) : dayLabel(at),
-      revenue: 0,
-      cost: 0,
-    };
-    point.revenue += log.finalAmount;
-    point.cost += log.discountAmount;
-    points.set(key, point);
-  }
-
-  return [...points.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, point]) => point);
-}
-
-// blocked = số lần fraud guard/rate limit ghi nhận (fraud-logs). failed = đơn FAILED trong redemption logs.
+// blocked = lượt bị luật chặn (fraud-logs). failed = lượt FAILED trong redemption logs.
+// Hai nhóm này có thể trùng nhau nếu một lượt vừa bị chặn vừa được ghi FAILED.
 function buildFraud(
   redemptions: RedemptionLogResponse[],
   frauds: FraudLogResponse[],
   range: DateRange,
   now: Date,
 ): FraudSummary {
-  const start = rangeStart(range, now);
+  const start = fraudStart(range, now);
   const recent = redemptions.filter((l) => inRange(l.createAt, start));
   const blockedLogs = frauds.filter((f) => inRange(f.createAt, start));
 
@@ -113,41 +125,72 @@ function buildFraud(
   };
 }
 
+// Tải đầy đủ: danh sách chiến dịch, lô, fraud và số liệu
 export async function fetchDashboard(range: DateRange): Promise<DashboardData> {
   const now = new Date();
-  const [campaigns, batches, redemptions, frauds] = await Promise.all([
-    fetchCampaigns(),
-    listVoucherBatches(),
-    listRedemptionLogs(),
-    listFraudLogs(),
-  ]);
+  const [campaigns, batches, redemptions, frauds, overview, daily] =
+    await Promise.all([
+      fetchCampaigns(),
+      listVoucherBatches(),
+      // Chỉ dùng cho thống kê fraud (success/failed). Sẽ chuyển sang phân trang sau.
+      listRedemptionLogs(),
+      listFraudLogs(),
+      getDashboardOverview(),
+      fetchDailySeries(range, now),
+    ]);
 
-  // Mỗi chiến dịch gọi 2 endpoint thống kê (tổng số lượng gọi = 2 × số chiến dịch)
-  const performance: CampaignPerformance[] = await Promise.all(
-    campaigns.map(async (c) => {
-      const [rate, revenue] = await Promise.all([
-        getCampaignRedemptionRate(c.id),
-        getCampaignIncrementalRevenue(c.id),
-      ]);
-      const prefix = batches.find((b) => b.campaignId === c.id)?.codeConfig
-        .prefix;
-      return {
-        id: String(c.id),
-        name: c.name,
-        batchCode: prefix ?? "—",
-        // BE không lưu thời điểm tạo chiến dịch, dùng thời gian bắt đầu thay thế
-        createAt: c.startTime,
-        cost: revenue.campaignSummary.totalDiscountAmount,
-        revenue: revenue.campaignSummary.totalFinalAmount,
-        issued: rate.campaignSummary.totalIssued,
-        redeemed: rate.campaignSummary.totalRedeemed,
-      };
-    }),
-  );
+  const campaignById = new Map(campaigns.map((c) => [c.id, c]));
+
+  const performance: CampaignPerformance[] = overview.campaigns.map((o) => {
+    const id = Number(o.campaignId);
+    const campaign = campaignById.get(id);
+    const prefix = batches.find((b) => b.campaignId === id)?.codeConfig.prefix;
+    return {
+      id: o.campaignId,
+      name: o.campaignName,
+      batchCode: prefix ?? "—",
+      // BE không lưu thời điểm tạo chiến dịch, dùng thời gian bắt đầu thay thế
+      createAt: campaign?.startTime ?? "",
+      cost: o.totalDiscountAmount,
+      revenue: o.totalFinalAmount,
+      issued: o.issuedCount,
+      redeemed: o.redeemedCount,
+      distributed: o.distributedCount,
+    };
+  });
 
   return {
     campaigns: performance,
-    daily: buildDaily(redemptions, range, now),
+    daily,
     fraud: buildFraud(redemptions, frauds, range, now),
   };
+}
+
+// Làm mới nhanh khi có sự kiện realtime: chỉ tải overview và timeseries.
+// Giữ nguyên danh sách chiến dịch và fraud của lần tải đầy đủ gần nhất.
+export async function refreshDashboardLive(
+  range: DateRange,
+  previous: DashboardData,
+): Promise<DashboardData> {
+  const now = new Date();
+  const [overview, daily] = await Promise.all([
+    getDashboardOverview(),
+    fetchDailySeries(range, now),
+  ]);
+
+  const byId = new Map(overview.campaigns.map((o) => [o.campaignId, o]));
+  const campaigns = previous.campaigns.map((c) => {
+    const o = byId.get(c.id);
+    if (!o) return c;
+    return {
+      ...c,
+      cost: o.totalDiscountAmount,
+      revenue: o.totalFinalAmount,
+      issued: o.issuedCount,
+      redeemed: o.redeemedCount,
+      distributed: o.distributedCount,
+    };
+  });
+
+  return { campaigns, daily, fraud: previous.fraud };
 }

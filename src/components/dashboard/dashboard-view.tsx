@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   BarChart3,
@@ -12,13 +12,13 @@ import {
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
-import { KpiCard } from "@/components/dashboard/kpi-card";
-import { RevenueChart } from "@/components/dashboard/revenue-chart";
-import { RedemptionDonut } from "@/components/dashboard/redemption-donut";
 import { CampaignRanking } from "@/components/dashboard/campaign-ranking";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { IncrementalRevenuePanel } from "@/components/dashboard/incremental-revenue-panel";
+import { KpiCard } from "@/components/dashboard/kpi-card";
+import { RedemptionDonut } from "@/components/dashboard/redemption-donut";
+import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -35,8 +35,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { aggregate, sortCampaigns } from "@/lib/dashboard/metrics";
-import { fetchDashboard } from "@/lib/dashboard/service";
+import { fetchDashboard, refreshDashboardLive } from "@/lib/dashboard/service";
 import type { DashboardData, DateRange, SortKey } from "@/lib/dashboard/types";
+import { useDashboardStream } from "@/lib/dashboard/use-dashboard-stream";
 import {
   formatNumber,
   formatPercent,
@@ -48,15 +49,15 @@ import { cn } from "@/lib/utils";
 const RANGE_OPTIONS: { value: DateRange; label: string }[] = [
   { value: "7d", label: "7 ngày qua" },
   { value: "month", label: "Tháng này" },
-  { value: "all", label: "Toàn thời gian" },
+  { value: "all", label: "12 tháng qua" },
 ];
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "roi_desc", label: "ROI cao nhất" },
-  { value: "roi_asc", label: "ROI thấp nhất" },
-  { value: "revenue_desc", label: "Doanh thu cao nhất" },
-  { value: "cost_desc", label: "Chi phí chiết khấu cao nhất" },
-  { value: "redemption_desc", label: "Tỷ lệ đổi mã cao nhất" },
+  { value: "roi_desc", label: "ROI cận trên cao nhất" },
+  { value: "roi_asc", label: "ROI cận trên thấp nhất" },
+  { value: "revenue_desc", label: "Doanh thu có mã cao nhất" },
+  { value: "cost_desc", label: "Tiền đã giảm cao nhất" },
+  { value: "redemption_desc", label: "Tỷ lệ dùng trên quota cao nhất" },
   { value: "newest", label: "Mới nhất gần đây" },
 ];
 
@@ -69,6 +70,61 @@ export function DashboardView() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [liveTick, setLiveTick] = useState(0);
+
+  // Dữ liệu mới nhất để làm mới nhanh không cần đưa vào dependency
+  const dataRef = useRef<DashboardData | null>(null);
+  // Sau khi SSE nối lại thì tải đầy đủ thay vì làm mới nhanh
+  const needsFullRefresh = useRef(false);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  useDashboardStream({
+    onEvent: (event) => {
+      if (event.type === "REDEMPTION_SUCCESS") {
+        toast.success("Có lượt áp mã mới", {
+          description: `${event.code ?? ""} • -${new Intl.NumberFormat("vi-VN").format(event.discountAmount ?? 0)} ₫`,
+        });
+      } else if (event.type === "CLAIMED") {
+        // Nhận mã không làm đổi số liệu, chỉ thông báo
+        toast.info("Có khách vừa nhận mã", {
+          description: event.code ?? undefined,
+        });
+        return;
+      }
+      // Lượt thất bại làm đổi tỷ lệ chuyển đổi, làm mới overview và biểu đồ
+      setLiveTick((t) => t + 1);
+    },
+    onReconnect: () => {
+      needsFullRefresh.current = true;
+      setLiveTick((t) => t + 1);
+    },
+  });
+
+  // Gom các sự kiện liên tiếp trong 1,5 giây. Không xóa dữ liệu đang hiển thị.
+  useEffect(() => {
+    if (liveTick === 0) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      const current = dataRef.current;
+      const full = needsFullRefresh.current || !current;
+      needsFullRefresh.current = false;
+      const request = full
+        ? fetchDashboard(range)
+        : refreshDashboardLive(range, current);
+      request
+        .then((result) => {
+          if (active) setData(result);
+        })
+        .catch(() => {});
+    }, 1500);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [liveTick, range]);
 
   useEffect(() => {
     let active = true;
@@ -112,23 +168,17 @@ export function DashboardView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">
-              Bảng điều khiển & Phân tích ROI Khuyến mãi
-            </h1>
-            <Badge variant="muted">Dữ liệu mẫu</Badge>
-          </div>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Theo dõi hiệu quả chiến dịch, tỷ suất sinh lời và chất lượng chuyển
-            đổi, chống gian lận.
-          </p>
-        </div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">
+          Bảng điều khiển hiệu quả khuyến mãi
+        </h1>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Select value={campaignId} onValueChange={setCampaignId}>
-            <SelectTrigger aria-label="Chọn chiến dịch" className="sm:w-72">
+            <SelectTrigger
+              aria-label="Chọn chiến dịch"
+              className="whitespace-nowrap sm:w-72"
+            >
               <SelectValue placeholder="Toàn bộ chiến dịch">
                 {selectedCampaignName}
               </SelectValue>
@@ -166,7 +216,7 @@ export function DashboardView() {
                 onClick={() => setRange(opt.value)}
                 aria-pressed={range === opt.value}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                   range === opt.value
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
@@ -200,29 +250,25 @@ export function DashboardView() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
-              title="Tổng doanh thu tạo ra (Revenue)"
+              title="Doanh thu từ đơn có áp dụng mã"
               value={formatVnd(totals.revenue)}
               icon={Wallet}
-              hint="Tổng tiền khách thanh toán sau khi áp mã"
             />
             <KpiCard
-              title="Chi phí khuyến mãi (Discount)"
+              title="Tổng tiền đã giảm"
               value={formatVnd(totals.cost)}
               icon={Receipt}
-              hint="Tổng tiền đã chiết khấu cho khách"
             />
             <KpiCard
-              title="Chỉ số tỷ suất ROI"
+              title="ROI (cận trên)"
               value={formatSignedPercent(totals.roi)}
               icon={Gauge}
               highlight="positive"
-              hint="(Doanh thu - Chi phí) / Chi phí"
             />
             <KpiCard
-              title="Tỷ lệ chuyển đổi (Redemption)"
-              value={formatPercent(totals.redemptionRate)}
+              title="Tỷ lệ dùng trên quota"
+              value={`${formatPercent(totals.redemptionRate)} - ${formatNumber(totals.redeemed)} / ${formatNumber(totals.issued)} lượt dùng trên tổng quota`}
               icon={Ticket}
-              hint={`${formatNumber(totals.redeemed)} / ${formatNumber(totals.issued)} mã đã dùng`}
             />
           </div>
 
@@ -231,12 +277,8 @@ export function DashboardView() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BarChart3 className="h-4 w-4 text-primary" />
-                  Tương quan doanh thu, chi phí và ROI
+                  Doanh thu và tiền giảm theo thời gian
                 </CardTitle>
-                <CardDescription>
-                  Doanh thu và chi phí theo thời gian, ROI hiển thị trên trục
-                  bên phải.
-                </CardDescription>
               </CardHeader>
               <CardContent>
                 <RevenueChart data={data.daily} />
@@ -245,35 +287,29 @@ export function DashboardView() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">
-                  Trạng thái áp mã & gian lận
-                </CardTitle>
-                <CardDescription>
-                  Phân bổ các lượt yêu cầu xác thực mã
-                </CardDescription>
+                <CardTitle className="text-base">Trạng thái áp mã</CardTitle>
               </CardHeader>
               <CardContent>
-                <RedemptionDonut fraud={data.fraud} />
+                <RedemptionDonut status={data.fraud} />
               </CardContent>
             </Card>
           </div>
 
+          <IncrementalRevenuePanel campaigns={data.campaigns} />
+
           <Card>
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-base">
-                  Xếp hạng hiệu năng chiến dịch theo ROI
-                </CardTitle>
-                <CardDescription>
-                  So sánh chi phí chiết khấu với doanh thu thực thu của từng
-                  chiến dịch
-                </CardDescription>
+                <CardTitle className="text-base">Xếp hạng chiến dịch</CardTitle>
               </div>
               <Select
                 value={sortKey}
                 onValueChange={(v) => setSortKey(v as SortKey)}
               >
-                <SelectTrigger aria-label="Sắp xếp" className="sm:w-64">
+                <SelectTrigger
+                  aria-label="Sắp xếp"
+                  className="whitespace-nowrap sm:w-80"
+                >
                   <span className="flex min-w-0 items-center gap-2">
                     <ArrowDownUp className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <SelectValue className="truncate" />

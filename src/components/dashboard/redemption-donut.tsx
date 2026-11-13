@@ -4,19 +4,19 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatNumber, formatPercent } from "@/lib/format";
 import type { FraudSummary } from "@/lib/dashboard/types";
 
-export function RedemptionDonut({ fraud }: { fraud: FraudSummary }) {
-  const total = fraud.success + fraud.blocked + fraud.failed;
+// Chỉ hiển thị trạng thái áp mã: thành công và thất bại.
+// Số liệu gian lận không hiển thị ở đây.
+export function RedemptionDonut({
+  status,
+}: {
+  status: Pick<FraudSummary, "success" | "failed">;
+}) {
+  const total = status.success + status.failed;
   const slices = [
-    { name: "Thành công", value: fraud.success, color: "hsl(var(--primary))" },
-    {
-      name: "Chặn gian lận",
-      value: fraud.blocked,
-      color: "hsl(var(--destructive))",
-    },
-    { name: "Lỗi điều kiện", value: fraud.failed, color: "hsl(38 92% 50%)" },
+    { name: "Thành công", value: status.success, color: "hsl(var(--primary))" },
+    { name: "Thất bại", value: status.failed, color: "hsl(38 92% 50%)" },
   ];
-  const pct = (value: number) => (total === 0 ? 0 : (value / total) * 100);
-  const maxReason = Math.max(1, ...fraud.reasons.map((r) => r.count));
+  const successRate = total === 0 ? 0 : (status.success / total) * 100;
 
   return (
     <div className="space-y-5">
@@ -48,55 +48,40 @@ export function RedemptionDonut({ fraud }: { fraud: FraudSummary }) {
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Tổng áp mã
+          <p className="whitespace-nowrap text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Tổng lượt áp mã
           </p>
           <p className="text-2xl font-bold tabular-nums">
             {formatNumber(total)}
           </p>
-          <p className="text-xs text-emerald-600 dark:text-emerald-400">
-            {formatPercent(pct(fraud.success))} hợp lệ
+          <p className="whitespace-nowrap text-xs text-emerald-600 dark:text-emerald-400">
+            {formatPercent(successRate)} thành công
           </p>
         </div>
       </div>
 
       <ul className="space-y-2 text-sm">
-        {slices.map((s) => (
-          <li
-            key={s.name}
-            className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2"
-          >
-            <span className="flex items-center gap-2">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ background: s.color }}
-              />
-              {s.name}
-            </span>
-            <span className="tabular-nums text-muted-foreground">
-              {formatNumber(s.value)} · {formatPercent(pct(s.value))}
-            </span>
-          </li>
-        ))}
+        {slices.map((s) => {
+          const pct = total === 0 ? 0 : (s.value / total) * 100;
+          return (
+            <li
+              key={s.name}
+              className="flex items-center justify-between gap-3 whitespace-nowrap"
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ background: s.color }}
+                />
+                {s.name}
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                {formatNumber(s.value)} · {formatPercent(pct)}
+              </span>
+            </li>
+          );
+        })}
       </ul>
-
-      <div className="space-y-3">
-        <p className="text-sm font-medium">Nguyên nhân chặn gian lận</p>
-        {fraud.reasons.map((r) => (
-          <div key={r.label} className="space-y-1">
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">{r.label}</span>
-              <span className="tabular-nums">{formatNumber(r.count)} lượt</span>
-            </div>
-            <div className="h-1.5 w-full rounded-full bg-muted">
-              <div
-                className="h-1.5 rounded-full bg-destructive"
-                style={{ width: `${(r.count / maxReason) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { PaginationBar } from "@/components/ui/pagination-bar";
 import {
   Table,
@@ -12,9 +11,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  calcDistributedRate,
   calcRedemptionRate,
   calcRoi,
-  rateCampaign,
 } from "@/lib/dashboard/metrics";
 import type { CampaignPerformance } from "@/lib/dashboard/types";
 import {
@@ -24,12 +23,6 @@ import {
   formatVnd,
 } from "@/lib/format";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
-
-const TONE_VARIANT = {
-  excellent: "success",
-  good: "default",
-  "needs-work": "warning",
-} as const;
 
 export function CampaignRanking({
   campaigns,
@@ -58,70 +51,98 @@ export function CampaignRanking({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Chiến dịch khuyến mãi</TableHead>
-            <TableHead className="text-right">Ngân sách chiết khấu</TableHead>
-            <TableHead className="text-right">Doanh thu về</TableHead>
-            <TableHead className="w-48">Tỷ lệ dùng mã</TableHead>
-            <TableHead className="text-right">Tỷ suất ROI</TableHead>
-            <TableHead>Đánh giá</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((c) => {
-            const roi = calcRoi(c.cost, c.revenue);
-            const redemption = calcRedemptionRate(c.issued, c.redeemed);
-            const rating = rateCampaign(roi);
-            return (
-              <TableRow key={c.id}>
-                <TableCell>
-                  <p className="font-medium">{c.name}</p>
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {c.batchCode}
-                  </p>
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-muted-foreground">
-                  {formatVnd(c.cost)}
-                </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">
-                  {formatVnd(c.revenue)}
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs tabular-nums">
-                      <span>{formatPercent(redemption)}</span>
-                      <span className="text-muted-foreground">
-                        {formatNumber(c.redeemed)}/{formatNumber(c.issued)}
-                      </span>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="whitespace-nowrap">Chiến dịch</TableHead>
+              <TableHead className="whitespace-nowrap text-right">
+                Tiền đã giảm
+              </TableHead>
+              <TableHead className="whitespace-nowrap text-right">
+                Doanh thu có mã
+              </TableHead>
+              <TableHead className="whitespace-nowrap">
+                Tỷ lệ dùng trên quota
+              </TableHead>
+              <TableHead className="whitespace-nowrap text-right">
+                ROI cận trên
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((c) => {
+              const redemption = calcRedemptionRate(c.issued, c.redeemed);
+              const roi = c.cost === 0 ? null : calcRoi(c.cost, c.revenue);
+              const distributed = c.distributed;
+              const distributedRate =
+                distributed === undefined
+                  ? null
+                  : calcDistributedRate(distributed, c.redeemed);
+
+              return (
+                <TableRow key={c.id}>
+                  <TableCell className="max-w-[260px] align-top">
+                    <p className="truncate font-medium" title={c.name}>
+                      {c.name}
+                    </p>
+                    <p className="font-mono text-xs text-muted-foreground">
+                      {c.batchCode}
+                    </p>
+                  </TableCell>
+
+                  <TableCell className="whitespace-nowrap text-right align-top tabular-nums text-muted-foreground">
+                    {formatVnd(c.cost)}
+                  </TableCell>
+
+                  <TableCell className="whitespace-nowrap text-right align-top font-semibold tabular-nums">
+                    {formatVnd(c.revenue)}
+                  </TableCell>
+
+                  <TableCell className="min-w-[220px] align-top">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-3 whitespace-nowrap text-xs tabular-nums">
+                        <span className="font-semibold">
+                          {formatPercent(redemption)}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {formatNumber(c.redeemed)} / {formatNumber(c.issued)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted">
+                        <div
+                          className="h-1.5 rounded-full bg-primary"
+                          style={{ width: `${Math.min(100, redemption)}%` }}
+                        />
+                      </div>
+                      {distributed !== undefined && (
+                        <p
+                          className="whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+                          title="Chỉ tính lượt gửi qua kênh phân phối. Mã dùng trực tiếp trên web không nằm trong số này."
+                        >
+                          Đã gửi {formatNumber(distributed)} ·{" "}
+                          {distributedRate === null
+                            ? "—"
+                            : `${formatPercent(distributedRate)} đã dùng`}
+                        </p>
+                      )}
                     </div>
-                    <div className="h-1.5 w-full rounded-full bg-muted">
-                      <div
-                        className="h-1.5 rounded-full bg-primary"
-                        style={{ width: `${Math.min(100, redemption)}%` }}
-                      />
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-                  {formatSignedPercent(roi)}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={TONE_VARIANT[rating.tone]}>
-                    {rating.label}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  </TableCell>
+
+                  <TableCell className="whitespace-nowrap text-right align-top font-semibold tabular-nums">
+                    {roi === null ? "—" : formatSignedPercent(roi)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
       <PaginationBar
         total={campaigns.length}
         page={safePage}
         pageSize={pageSize}
-        pageCount={pageCount}
+        pageCount={pageCountOf(campaigns.length, pageSize)}
         onPageChange={setPage}
       />
     </>

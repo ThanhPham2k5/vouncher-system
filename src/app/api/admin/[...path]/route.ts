@@ -22,6 +22,8 @@ const ALLOWED_PATHS: RegExp[] = [
   /^batch-rules(\/\d+)?$/,
   /^distributions(\/logs\/\d+)?$/,
   /^statistic\/campaigns\/\d+\/(redemption-rate|incremental-revenue)$/,
+  /^statistic\/overview$/,
+  /^statistic\/timeseries$/,
   /^vouchers(\/\d+|\/code\/[^/]+)?$/,
   /^vouchers\/customer(\/\d+)?$/,
 ];
