@@ -5,6 +5,7 @@ import {
   type BackendTokens,
 } from "@/lib/admin-session";
 import { BACKEND_URL } from "@/lib/config";
+import { translateErrorBody } from "@/lib/backend-messages";
 import { ADMIN_ACCESS_COOKIE, ADMIN_REFRESH_COOKIE } from "@/lib/cookies";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -94,7 +95,8 @@ async function forward(req: Request, ctx: RouteContext): Promise<NextResponse> {
     }
   }
 
-  const text = await upstream.text();
+  const raw = await upstream.text();
+  const text = upstream.ok ? raw : translateErrorBody(raw);
   const response = new NextResponse(text, {
     status: upstream.status,
     headers: {

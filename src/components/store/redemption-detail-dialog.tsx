@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,39 +83,58 @@ export function RedemptionDetailDialog({
               </div>
             </div>
 
-            <section className="space-y-2">
-              <h3 className="font-semibold">Thông tin voucher</h3>
-              <dl className="space-y-3 rounded-lg border p-4 text-sm">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Mã voucher</dt>
-                  <dd className="font-mono font-semibold">{record.code}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Phần thưởng</dt>
-                  <dd>{record.headline || "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Điều kiện</dt>
-                  <dd>
-                    {record.conditions.length > 0 ? (
-                      <ul className="space-y-0.5">
-                        {record.conditions.map((line, i) => (
-                          <li key={i}>{line}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      "—"
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </section>
+            <Section title="Thông tin voucher">
+              <Row label="Mã voucher">
+                <span className="font-mono">{record.code}</span>
+              </Row>
+              <Row label="Chiến dịch">{record.campaignTitle || "—"}</Row>
+              <Row label="Phần thưởng">{record.headline || "—"}</Row>
+              <Row label="Điều kiện">
+                {record.conditions.length > 0 ? (
+                  <ul className="space-y-0.5">
+                    {record.conditions.map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  "—"
+                )}
+              </Row>
+            </Section>
 
-            {!success && record.blockedReason && (
-              <p className="text-sm text-destructive">
-                Lí do: {record.blockedReason}
-              </p>
-            )}
+            <Section title="Thông tin giao dịch">
+              <Row label="Mã lần áp">#{record.id}</Row>
+              <Row label="ID voucher">#{record.voucherId}</Row>
+              <Row label="Thời điểm">{formatDateTime(record.appliedAt)}</Row>
+              <Row label="Trạng thái">
+                {success ? "Thành công" : "Thất bại"}
+              </Row>
+              <Row label="Giá trị đơn gốc">
+                {formatVnd(record.originalAmount)}
+              </Row>
+              <Row label="Số tiền giảm">
+                {success ? formatVnd(record.discountAmount) : "0 ₫"}
+              </Row>
+              <Row label="Thực thu">{formatVnd(record.finalAmount)}</Row>
+              <Row label="Lý do thất bại">
+                <span className={success ? "" : "text-destructive"}>
+                  {record.failureReason || "—"}
+                </span>
+              </Row>
+            </Section>
+
+            <Section title="Thông tin kỹ thuật">
+              <Row label="Địa chỉ IP">{record.ipAddress || "—"}</Row>
+              <Row label="Mã thiết bị">
+                {record.deviceFingerprint ? (
+                  <span className="break-all font-mono text-xs">
+                    {record.deviceFingerprint}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </Row>
+            </Section>
 
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -125,5 +145,23 @@ export function RedemptionDetailDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-2">
+      <h3 className="font-semibold">{title}</h3>
+      <dl className="divide-y rounded-lg border px-4 text-sm">{children}</dl>
+    </section>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1 py-2.5 sm:grid-cols-[11rem_1fr] sm:gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="break-words font-medium">{children}</dd>
+    </div>
   );
 }

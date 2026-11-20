@@ -16,8 +16,11 @@ export interface RedemptionRecord {
   blockedReason?: string;
   appliedAt: string; // ISO
   transactionRef: string;
-  ip: string;
-  device: string;
+  voucherId: number;
+  finalAmount: number;
+  ipAddress: string | null;
+  deviceFingerprint: string | null;
+  failureReason: string | null;
 }
 
 export async function listStoreHistory(
@@ -33,7 +36,7 @@ export async function listStoreHistory(
   const usedVouchers = vouchers.filter((v) =>
     logs.some((l) => l.voucherId === v.id),
   );
-  const infos = await describeVouchers(usedVouchers);
+  const infos = describeVouchers(usedVouchers);
   const infoByVoucherId = new Map(infos.map((i) => [i.voucherId, i]));
 
   return [...logs]
@@ -52,10 +55,11 @@ export async function listStoreHistory(
         blockedReason: l.failureReason ?? undefined,
         appliedAt: l.createAt,
         transactionRef: `LOG_REDEMPTION_${l.id}`,
-        ip: l.ipAddress ?? "—",
-        device: l.deviceFingerprint
-          ? `Mã thiết bị ${l.deviceFingerprint.slice(0, 12)}…`
-          : "—",
+        voucherId: l.voucherId,
+        finalAmount: l.finalAmount,
+        ipAddress: l.ipAddress,
+        deviceFingerprint: l.deviceFingerprint,
+        failureReason: l.failureReason,
       };
     });
 }

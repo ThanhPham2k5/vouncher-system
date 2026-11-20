@@ -1,16 +1,9 @@
-// Thông tin ưu đãi của voucher, lấy từ API thật.
-// Ghép theo chuỗi: voucher → lô → quy tắc lô → phần thưởng và điều kiện.
-// LƯU Ý: các endpoint này hiện là API admin (qua /api/admin, cần phiên admin).
+// Thông tin ưu đãi của voucher, lấy từ GET vouchers.
+// VoucherResponse đã có đủ campaign, batch, reward và condition nên không gọi thêm API nào.
+// LƯU Ý: endpoint này hiện là API admin (qua /api/admin, cần phiên admin).
 // Khách hàng chưa có quyền gọi. Cần BE mở endpoint công khai cho store.
 import { summarizeConfig } from "@/components/rules/rule-config";
-import {
-  listBatchRules,
-  listConditions,
-  listRewards,
-} from "@/lib/api/rule-engine";
-import { listVoucherBatches } from "@/lib/api/voucher-batches";
 import { listVouchers } from "@/lib/api/vouchers";
-import { listCampaigns } from "@/lib/campaigns/service";
 import type {
   BatchType,
   ConditionType,
@@ -38,6 +31,7 @@ const KIND_OF_REWARD: Record<RewardType, ClaimKind> = {
 export interface ClaimableVoucher {
   code: string;
   voucherId: number;
+  expiresAt: string;
   batchType: BatchType;
   kind: ClaimKind;
   title: string; // tên phần thưởng
@@ -90,76 +84,39 @@ export function describeCondition(
   }
 }
 
-// Ghép thông tin cho danh sách voucher bất kỳ, không lọc theo chiến dịch hay loại lô
-export async function describeVouchers(
+// Ghép thông tin hiển thị từ danh sách VoucherResponse, không gọi API
+export function describeVouchers(
   vouchers: VoucherResponse[],
-): Promise<ClaimableVoucher[]> {
-  if (vouchers.length === 0) return [];
-
-  const [batches, batchRules, rewards, conditions] = await Promise.all([
-    listVoucherBatches(),
-    listBatchRules(),
-    listRewards(),
-    listConditions(),
-  ]);
-
-  const batchById = new Map(batches.map((b) => [b.id, b]));
-  const ruleById = new Map(batchRules.map((r) => [r.id, r]));
-  const rewardById = new Map(rewards.map((r) => [r.id, r]));
-  const conditionById = new Map(conditions.map((c) => [c.id, c]));
-
-  return vouchers.flatMap((v) => {
-    const batch = batchById.get(v.batchId);
-    if (!batch) return [];
-
-    const rule = ruleById.get(batch.ruleId);
-    const reward = rule ? rewardById.get(rule.rewardId) : undefined;
-    const condition = rule ? conditionById.get(rule.conditionId) : undefined;
-    if (!reward || !condition) return [];
-
-    return [
-      {
-        code: v.code,
-        voucherId: v.id,
-        batchType: batch.batchType,
-        kind: KIND_OF_REWARD[reward.rewardType],
-        title: reward.name,
-        subtitle: condition.name,
-        headline: summarizeConfig("REWARD", reward.rewardType, reward.config),
-        conditions: describeCondition(
-          condition.conditionType,
-          condition.config,
-        ),
-      },
-    ];
-  });
+): ClaimableVoucher[] {
+  return vouchers.map((v) => ({
+    code: v.code,
+    voucherId: v.id,
+    expiresAt: v.campaign.endTime,
+    batchType: v.batch.batchType,
+    kind: KIND_OF_REWARD[v.reward.type as RewardType],
+    title: v.reward.name,
+    subtitle: v.condition.name,
+    headline: summarizeConfig(
+      "REWARD",
+      v.reward.type,
+      (v.reward.config ?? {}) as JsonObject,
+    ),
+    conditions: describeCondition(
+      v.condition.type as ConditionType,
+      (v.condition.config ?? {}) as JsonObject,
+    ),
+  }));
 }
 
-// Trang săn mã: chỉ voucher thuộc chiến dịch ACTIVE và lô GENERIC
+// Trang săn mã: một lần gọi GET vouchers.
+// Chỉ lấy voucher thuộc chiến dịch ACTIVE, lô GENERIC và lô chưa hết lượt.
 export async function listClaimableVouchers(): Promise<ClaimableVoucher[]> {
-  const [vouchers, campaigns, batches] = await Promise.all([
-    listVouchers(),
-    listCampaigns(),
-    listVoucherBatches(),
-  ]);
-  const activeCampaignIds = new Set(
-    campaigns.filter((c) => c.status === "ACTIVE").map((c) => c.id),
+  const vouchers = await listVouchers();
+  const eligible = vouchers.filter(
+    (v) =>
+      v.campaign.status === "ACTIVE" &&
+      v.batch.batchType === "GENERIC" &&
+      v.batch.redeemedCount < v.batch.maxUsageCount,
   );
-  const eligible = vouchers.filter((v) => activeCampaignIds.has(v.campaignId));
-
-  // Lô đã dùng hết lượt (redeemedCount >= maxUsageCount) thì ẩn khỏi trang săn mã
-  const batchById = new Map(batches.map((b) => [b.id, b]));
-  const exhaustedVoucherIds = new Set(
-    eligible
-      .filter((v) => {
-        const batch = batchById.get(v.batchId);
-        return !!batch && batch.redeemedCount >= batch.maxUsageCount;
-      })
-      .map((v) => v.id),
-  );
-
-  const infos = await describeVouchers(eligible);
-  return infos.filter(
-    (i) => i.batchType === "GENERIC" && !exhaustedVoucherIds.has(i.voucherId),
-  );
+  return describeVouchers(eligible);
 }

@@ -27,7 +27,7 @@ import {
   type RedeemResult,
 } from "@/lib/store-checkout";
 import {
-  loadWalletRules,
+  loadCheckoutRules,
   previewWalletRule,
   type WalletPreview,
   type WalletRule,
@@ -223,7 +223,7 @@ export function CheckoutView({ customerId }: CheckoutViewProps) {
           ? listCustomerVouchers({ customerId, status: "AVAILABLE" })
           : Promise.resolve<CustomerVoucherResponse[]>([]),
       ]);
-      const rules = await loadWalletRules(
+      const rules = await loadCheckoutRules(
         new Set(owned.map((w) => w.voucherId)),
       );
       if (!active) return;
@@ -410,7 +410,7 @@ export function CheckoutView({ customerId }: CheckoutViewProps) {
                 aria-label="Chọn mã trong kho"
                 className="font-mono"
               >
-                <SelectValue placeholder="Chọn mã từ kho" />
+                <SelectValue placeholder="Chọn mã giảm giá" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>Không áp mã</SelectItem>

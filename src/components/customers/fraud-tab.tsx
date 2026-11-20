@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Ban, Search } from "lucide-react";
+import { Ban, Eye, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +23,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { FraudDetailDialog } from "@/components/customers/fraud-detail-dialog";
+import type {
+  FraudLogResponse,
+  VoucherResponse,
+} from "@/lib/campaigns/be-types";
 import { formatDateTime } from "@/lib/campaigns/format";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
@@ -46,8 +51,14 @@ export function FraudTab({ data, onBlock, onOpenCustomer }: FraudTabProps) {
   const [search, setSearch] = useState("");
   const [rule, setRule] = useState(ALL);
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<FraudLogResponse | null>(null);
 
   const codeOf = useMemo(() => voucherCodeMap(data.vouchers), [data.vouchers]);
+
+  const voucherById = useMemo(
+    () => new Map<number, VoucherResponse>(data.vouchers.map((v) => [v.id, v])),
+    [data.vouchers],
+  );
 
   const rules = useMemo(
     () => Array.from(new Set(data.fraudLogs.map((f) => f.violationRule))),
@@ -125,11 +136,11 @@ export function FraudTab({ data, onBlock, onOpenCustomer }: FraudTabProps) {
                   <TableHead className="w-16">ID</TableHead>
                   <TableHead>Khách hàng</TableHead>
                   <TableHead>Mã voucher</TableHead>
-                  <TableHead>IP</TableHead>
-                  <TableHead>Thiết bị</TableHead>
                   <TableHead>Quy tắc vi phạm</TableHead>
                   <TableHead>Thời gian</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
+                  <TableHead className="whitespace-nowrap text-center">
+                    Thao tác
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -149,7 +160,6 @@ export function FraudTab({ data, onBlock, onOpenCustomer }: FraudTabProps) {
                     "DEVICE_FINGERPRINT",
                     f.deviceFingerprint,
                   );
-                  const blocked = !!(customerBlock || ipBlock || deviceBlock);
                   return (
                     <TableRow key={f.id}>
                       <TableCell className="font-mono text-xs tabular-nums">
@@ -167,25 +177,25 @@ export function FraudTab({ data, onBlock, onOpenCustomer }: FraudTabProps) {
                       <TableCell className="font-mono text-sm">
                         {codeOf(f.voucherId)}
                       </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {f.ipAddress ?? "—"}
-                      </TableCell>
-                      <TableCell className="max-w-[10rem] truncate font-mono text-xs">
-                        {f.deviceFingerprint ?? "—"}
-                      </TableCell>
                       <TableCell>
                         <Badge variant="destructive" className="font-mono">
                           {f.violationRule}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell className="whitespace-nowrap text-sm">
                         {formatDateTime(f.createAt)}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {blocked ? (
-                            <Badge variant="muted">Đã chặn</Badge>
-                          ) : null}
+                      <TableCell className="whitespace-nowrap text-center">
+                        <div className="flex justify-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelected(f)}
+                            aria-label={`Xem chi tiết nhật ký #${f.id}`}
+                          >
+                            <Eye />
+                            Chi tiết
+                          </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button size="sm" variant="outline">
@@ -193,7 +203,7 @@ export function FraudTab({ data, onBlock, onOpenCustomer }: FraudTabProps) {
                                 Chặn
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
+                            <DropdownMenuContent align="center">
                               <DropdownMenuLabel>Chặn theo</DropdownMenuLabel>
                               <DropdownMenuItem
                                 disabled={!!customerBlock}
@@ -252,6 +262,15 @@ export function FraudTab({ data, onBlock, onOpenCustomer }: FraudTabProps) {
           onPageChange={setPage}
         />
       </Card>
+
+      <FraudDetailDialog
+        log={selected}
+        voucher={selected ? voucherById.get(selected.voucherId) : undefined}
+        blacklist={data.blacklist}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+      />
     </div>
   );
 }

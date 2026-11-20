@@ -4,6 +4,7 @@ import { customerIdOf, segmentsOfCustomerId } from "@/lib/store-customers";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { translateErrorBody } from "@/lib/backend-messages";
 
 // Mã thiết bị ổn định cho trình duyệt, BE dùng để chặn gian lận theo thiết bị
 const DEVICE_COOKIE = "pc_store_device";
@@ -75,7 +76,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const text = await upstream.text();
+  const raw = await upstream.text();
+  const text = upstream.ok ? raw : translateErrorBody(raw);
   const response = new NextResponse(text, {
     status: upstream.status,
     headers: {

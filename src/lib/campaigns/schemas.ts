@@ -70,20 +70,20 @@ export const voucherBatchInputSchema = z
         path: ["quotaEmail"],
       });
     }
-    if (v.quotaEmail > MAX_BULK_QUOTA_PER_CHANNEL) {
-      ctx.addIssue({
-        code: "custom",
-        message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho email`,
-        path: ["quotaEmail"],
-      });
-    }
-    if (v.quotaWebhook > MAX_BULK_QUOTA_PER_CHANNEL) {
-      ctx.addIssue({
-        code: "custom",
-        message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho webhook`,
-        path: ["quotaWebhook"],
-      });
-    }
+    // if (v.quotaEmail > MAX_BULK_QUOTA_PER_CHANNEL) {
+    //   ctx.addIssue({
+    //     code: "custom",
+    //     message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho email`,
+    //     path: ["quotaEmail"],
+    //   });
+    // }
+    // if (v.quotaWebhook > MAX_BULK_QUOTA_PER_CHANNEL) {
+    //   ctx.addIssue({
+    //     code: "custom",
+    //     message: `Lô Bulk tối đa ${MAX_BULK_QUOTA_PER_CHANNEL} mã cho webhook`,
+    //     path: ["quotaWebhook"],
+    //   });
+    // }
   });
 
 const UNIT_MS: Record<string, number> = {

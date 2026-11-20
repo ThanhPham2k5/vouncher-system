@@ -43,6 +43,14 @@ interface SendDistributionDialogProps {
   campaigns: CampaignView[];
   onOpenChange: (open: boolean) => void;
   onSent: (log: DistributionLogResponse) => void;
+  onBulkSend: (req: BulkSendRequest) => void;
+}
+
+export interface BulkSendRequest {
+  campaignId: number;
+  batchId: number;
+  channel: DistributionChannel;
+  targets: string[];
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -60,6 +68,7 @@ export function SendDistributionDialog({
   campaigns,
   onOpenChange,
   onSent,
+  onBulkSend,
 }: SendDistributionDialogProps) {
   const [campaignId, setCampaignId] = useState<string>("");
   const [batchId, setBatchId] = useState<string>("");
@@ -124,8 +133,7 @@ export function SendDistributionDialog({
   }
 
   // Gửi hàng loạt: số địa chỉ = min(quota của kênh, số địa chỉ mẫu).
-  // Duyệt danh sách mẫu từ đầu, gửi lần lượt từng địa chỉ. Bỏ qua ô nhập địa chỉ thủ công.
-  async function handleBulkSend() {
+  function handleBulkSend() {
     if (!campaignId) {
       setError("Chọn chiến dịch");
       return;
@@ -141,42 +149,22 @@ export function SendDistributionDialog({
     }
 
     const quota = quotaOf(batch.distributionChannels, channel);
-    const targets =
+    const pool =
       channel === "EMAIL" ? MOCK_EMAIL_TARGETS : MOCK_WEBHOOK_TARGETS;
-    const count = Math.min(quota, targets.length);
+    const count = Math.min(quota, pool.length);
     if (count <= 0) {
       setError(`Kênh ${DISTRIBUTION_LABEL[channel]} của lô này chưa có quota`);
       return;
     }
 
     setError(null);
-    setBusy(true);
-    let sent = 0;
-    const failures: string[] = [];
-    // Gửi tuần tự để không vượt quota và không tranh chấp với BE
-    for (let i = 0; i < count; i++) {
-      const address = targets[i];
-      try {
-        const log = await createDistributionLog({
-          batchId: Number(batchId),
-          campaignId: Number(campaignId),
-          channel,
-          targetAddress: address,
-        });
-        sent += 1;
-        onSent(log);
-      } catch (err) {
-        failures.push(describeError(err));
-      }
-    }
-    setBusy(false);
-
-    if (failures.length === 0) {
-      toast.success(`Đã gửi ${sent} mã qua ${DISTRIBUTION_LABEL[channel]}`);
-      onOpenChange(false);
-    } else {
-      setError(`${failures[0]}`);
-    }
+    onBulkSend({
+      campaignId: Number(campaignId),
+      batchId: Number(batchId),
+      channel,
+      targets: pool.slice(0, count),
+    });
+    onOpenChange(false);
   }
 
   return (
@@ -283,7 +271,7 @@ export function SendDistributionDialog({
               disabled={busy}
               className="w-full border-primary/40 text-primary hover:bg-primary/5 sm:w-auto"
             >
-              {busy ? <Loader2 className="animate-spin" /> : <Layers />}
+              <Layers />
               Gửi hàng loạt
             </Button>
             <Button

@@ -63,13 +63,8 @@ export function BatchRuleDialog({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Chỉ cho chọn phần thưởng và điều kiện đang PUBLISHED, giữ lại mục đang chọn khi sửa
-  const rewardOptions = rewards.filter(
-    (r) => r.status === "PUBLISHED" || String(r.id) === rewardId,
-  );
-  const conditionOptions = conditions.filter(
-    (c) => c.status === "PUBLISHED" || String(c.id) === conditionId,
-  );
+  const rewardOptions = rewards;
+  const conditionOptions = conditions;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

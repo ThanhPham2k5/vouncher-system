@@ -559,40 +559,44 @@ export function BatchEditor({
           </Select>
         </Field>
 
-        <Field label="Thời hạn sử dụng" error={err("durationValue")}>
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              min={1}
-              value={batch.durationValue}
-              onChange={(e) =>
-                onChange({ durationValue: Number(e.target.value) })
-              }
-              aria-invalid={!!err("durationValue")}
-              className="flex-1"
-            />
-            <div className="w-32">
-              <Select
-                value={batch.durationUnit}
-                disabled={disabled}
-                onValueChange={(v) =>
-                  onChange({ durationUnit: v as DurationUnit })
+        {batch.batchType === "BULK" && (
+          <Field label="Thời hạn sử dụng" error={err("durationValue")}>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={1}
+                value={batch.durationValue}
+                onChange={(e) =>
+                  onChange({ durationValue: Number(e.target.value) })
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(DURATION_LABEL) as DurationUnit[]).map((u) => (
-                    <SelectItem key={u} value={u}>
-                      {DURATION_LABEL[u]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                aria-invalid={!!err("durationValue")}
+                className="flex-1"
+              />
+              <div className="w-32">
+                <Select
+                  value={batch.durationUnit}
+                  disabled={disabled}
+                  onValueChange={(v) =>
+                    onChange({ durationUnit: v as DurationUnit })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(DURATION_LABEL) as DurationUnit[]).map(
+                      (u) => (
+                        <SelectItem key={u} value={u}>
+                          {DURATION_LABEL[u]}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-        </Field>
+          </Field>
+        )}
 
         {batch.batchType === "BULK" && (
           <>

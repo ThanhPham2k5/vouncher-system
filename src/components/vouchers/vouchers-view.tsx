@@ -17,29 +17,18 @@ import {
 } from "@/components/ui/table";
 import { VoucherDetailDialog } from "@/components/vouchers/voucher-detail-dialog";
 import { getVoucherByCode, listVouchers } from "@/lib/api/vouchers";
-import type {
-  VoucherBatchResponse,
-  VoucherResponse,
-} from "@/lib/campaigns/be-types";
-import { listCampaigns, listVoucherBatches } from "@/lib/campaigns/service";
-import type { CampaignView } from "@/lib/campaigns/types";
+import type { VoucherResponse } from "@/lib/campaigns/be-types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
-import { RefreshCw, Search } from "lucide-react";
+import { Eye, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 10;
 const ALL = "ALL";
 
-interface LoadedData {
-  vouchers: VoucherResponse[];
-  campaigns: CampaignView[];
-  batches: VoucherBatchResponse[];
-}
-
 export function VouchersView() {
-  const [data, setData] = useState<LoadedData | null>(null);
+  const [vouchers, setVouchers] = useState<VoucherResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [search, setSearch] = useState("");
@@ -53,9 +42,9 @@ export function VouchersView() {
   useEffect(() => {
     let active = true;
     setError(null);
-    Promise.all([listVouchers(), listCampaigns(), listVoucherBatches()])
-      .then(([vouchers, campaigns, batches]) => {
-        if (active) setData({ vouchers, campaigns, batches });
+    listVouchers()
+      .then((data) => {
+        if (active) setVouchers(data);
       })
       .catch(() => {
         if (active) setError("Không tải được danh sách mã giảm giá.");
@@ -65,39 +54,35 @@ export function VouchersView() {
     };
   }, [attempt]);
 
-  const campaignName = useMemo(() => {
+  // BE đã trả đầy đủ campaign và batch trong từng voucher nên suy ra bộ lọc từ đây
+  const campaignOptions = useMemo(() => {
     const map = new Map<number, string>();
-    data?.campaigns.forEach((c) => map.set(c.id, c.name));
-    return (id: number) => map.get(id) ?? `Chiến dịch #${id}`;
-  }, [data]);
+    vouchers?.forEach((v) => map.set(v.campaign.id, v.campaign.name));
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [vouchers]);
 
-  const batchById = useMemo(() => {
-    const map = new Map<number, VoucherBatchResponse>();
-    data?.batches.forEach((b) => map.set(b.id, b));
-    return map;
-  }, [data]);
-
-  const batchOptions = useMemo(
-    () =>
-      (data?.batches ?? []).filter(
-        (b) =>
-          campaignFilter === ALL || String(b.campaignId) === campaignFilter,
-      ),
-    [data, campaignFilter],
-  );
+  const batchOptions = useMemo(() => {
+    const map = new Map<number, VoucherResponse["batch"]>();
+    vouchers?.forEach((v) => {
+      if (campaignFilter === ALL || String(v.campaign.id) === campaignFilter) {
+        map.set(v.batch.id, v.batch);
+      }
+    });
+    return Array.from(map.values());
+  }, [vouchers, campaignFilter]);
 
   const filtered = useMemo(() => {
-    if (!data) return [];
+    if (!vouchers) return [];
     const q = normalizeSearch(search);
-    return data.vouchers.filter((v) => {
+    return vouchers.filter((v) => {
       const matchCampaign =
-        campaignFilter === ALL || String(v.campaignId) === campaignFilter;
+        campaignFilter === ALL || String(v.campaign.id) === campaignFilter;
       const matchBatch =
-        batchFilter === ALL || String(v.batchId) === batchFilter;
+        batchFilter === ALL || String(v.batch.id) === batchFilter;
       const matchText = matchesSearch(q, v.code);
       return matchCampaign && matchBatch && matchText;
     });
-  }, [data, search, campaignFilter, batchFilter]);
+  }, [vouchers, search, campaignFilter, batchFilter]);
 
   const pageCount = pageCountOf(filtered.length, PAGE_SIZE);
   const safePage = clampPage(page, pageCount);
@@ -185,7 +170,7 @@ export function VouchersView() {
               searchPlaceholder="Tìm chiến dịch..."
               options={[
                 { value: ALL, label: "Tất cả chiến dịch" },
-                ...(data?.campaigns ?? []).map((c) => ({
+                ...campaignOptions.map((c) => ({
                   value: String(c.id),
                   label: c.name,
                 })),
@@ -228,7 +213,7 @@ export function VouchersView() {
             </Button>
           </AlertDescription>
         </Alert>
-      ) : !data ? (
+      ) : !vouchers ? (
         <Card>
           <CardContent className="space-y-3 p-6">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -260,10 +245,10 @@ export function VouchersView() {
                         {v.code}
                       </TableCell>
                       <TableCell className="text-sm">
-                        {campaignName(v.campaignId)}
+                        {v.campaign.name}
                       </TableCell>
                       <TableCell className="text-sm tabular-nums">
-                        #{v.batchId}
+                        #{v.batch.id}
                       </TableCell>
                       <TableCell className="text-center">
                         <Button
@@ -272,6 +257,7 @@ export function VouchersView() {
                           onClick={() => setDetail(v)}
                           aria-label={`Xem ${v.code}`}
                         >
+                          <Eye />
                           Chi tiết
                         </Button>
                       </TableCell>
@@ -294,8 +280,6 @@ export function VouchersView() {
       <VoucherDetailDialog
         key={detail?.id ?? "none"}
         voucher={detail}
-        campaignName={detail ? campaignName(detail.campaignId) : ""}
-        batch={detail ? batchById.get(detail.batchId) : undefined}
         onOpenChange={(open) => {
           if (!open) setDetail(null);
         }}

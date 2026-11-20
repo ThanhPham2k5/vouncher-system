@@ -47,9 +47,11 @@ export function CustomersView() {
   const [blacklistOpen, setBlacklistOpen] = useState(false);
   const [blacklistPrefill, setBlacklistPrefill] =
     useState<BlacklistPrefill | null>(null);
+  const [blacklistSeq, setBlacklistSeq] = useState(0);
   const [rateLimitOpen, setRateLimitOpen] = useState(false);
   const [editingRateLimit, setEditingRateLimit] =
     useState<RateLimitConfigResponse | null>(null);
+  const [rateLimitSeq, setRateLimitSeq] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -86,11 +88,13 @@ export function CustomersView() {
 
   function openBlacklist(prefill: BlacklistPrefill | null) {
     setBlacklistPrefill(prefill);
+    setBlacklistSeq((n) => n + 1);
     setBlacklistOpen(true);
   }
 
   function openRateLimit(item: RateLimitConfigResponse | null) {
     setEditingRateLimit(item);
+    setRateLimitSeq((s) => s + 1);
     setRateLimitOpen(true);
   }
 
@@ -141,12 +145,22 @@ export function CustomersView() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Khách hàng & Gian lận</h1>
-        <p className="text-sm text-muted-foreground">
-          Theo dõi nhật ký gian lận, lịch sử áp mã, danh sách đen và cấu hình
-          giới hạn tần suất.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Khách hàng & Gian lận</h1>
+          <p className="text-sm text-muted-foreground">
+            Theo dõi nhật ký gian lận, lịch sử áp mã, danh sách đen và cấu hình
+            giới hạn tần suất.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => setAttempt((n) => n + 1)}
+          disabled={!data}
+        >
+          <RefreshCw />
+          Làm mới
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2" role="tablist">
@@ -205,6 +219,7 @@ export function CustomersView() {
       />
 
       <BlacklistDialog
+        key={`blacklist-${blacklistSeq}`}
         open={blacklistOpen}
         prefill={blacklistPrefill}
         onOpenChange={setBlacklistOpen}
@@ -212,6 +227,7 @@ export function CustomersView() {
       />
 
       <RateLimitDialog
+        key={`rate-limit-${rateLimitSeq}`}
         open={rateLimitOpen}
         editing={editingRateLimit}
         onOpenChange={setRateLimitOpen}

@@ -34,13 +34,6 @@ import type {
 
 export { fetchVoucherBatches as listVoucherBatches };
 
-// Spec không cho người dùng đặt ENDED, nên FE tự hiển thị ENDED khi quá endTime
-function resolveStatus(c: CampaignResponse): CampaignStatus {
-  if (c.status === "DRAFT" || c.status === "ENDED") return c.status;
-  const end = Date.parse(c.endTime);
-  return !Number.isNaN(end) && end < Date.now() ? "ENDED" : c.status;
-}
-
 function toView(
   c: CampaignResponse,
   batches: VoucherBatchResponse[],
@@ -48,7 +41,7 @@ function toView(
   const own = batches.filter((b) => b.campaignId === c.id);
   return {
     ...c,
-    status: resolveStatus(c),
+    status: c.status,
     batchIds: own.map((b) => b.id),
     batches: own,
   };
@@ -196,22 +189,12 @@ export async function updateCampaign(
   return toView(updated, await fetchVoucherBatches(id));
 }
 
-// Đổi trạng thái qua PATCH /campaigns/{id}. BE hiện nhận status trong body nhưng không lưu
-// (CampaignServiceImpl.updateCampaign bỏ qua status), nên nếu BE trả về trạng thái cũ thì báo lỗi rõ ràng.
+// Đổi trạng thái qua PATCH /campaigns/{id}. BE kiểm tra và lưu trạng thái.
 export async function setCampaignStatus(
   id: number,
-  status: "ACTIVE" | "PAUSED",
+  status: "ACTIVE" | "PAUSED" | "ENDED",
 ): Promise<CampaignView> {
-  const current = await fetchCampaign(id);
-  if (resolveStatus(current) === "ENDED") {
-    throw new Error("Chiến dịch đã hết hạn, không thể đổi trạng thái");
-  }
   const updated = await patchCampaign(id, { status });
-  if (updated.status !== status) {
-    throw new Error(
-      "Backend chưa lưu được trạng thái chiến dịch. CampaignServiceImpl.updateCampaign cần xử lý request.status.",
-    );
-  }
   return toView(updated, await fetchVoucherBatches(id));
 }
 

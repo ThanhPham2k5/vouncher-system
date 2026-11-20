@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PaginationBar } from "@/components/ui/pagination-bar";
@@ -21,9 +22,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { RedemptionDetailDialog } from "@/components/customers/redemption-detail-dialog";
 import {
   REDEMPTION_STATUSES,
+  type RedemptionLogResponse,
   type RedemptionStatus,
+  type VoucherResponse,
 } from "@/lib/campaigns/be-types";
 import { formatDateTime } from "@/lib/campaigns/format";
 import { formatVnd } from "@/lib/format";
@@ -51,8 +55,14 @@ export function RedemptionTab({ data, onOpenCustomer }: RedemptionTabProps) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState(ALL);
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<RedemptionLogResponse | null>(null);
 
   const codeOf = useMemo(() => voucherCodeMap(data.vouchers), [data.vouchers]);
+
+  const voucherById = useMemo(
+    () => new Map<number, VoucherResponse>(data.vouchers.map((v) => [v.id, v])),
+    [data.vouchers],
+  );
 
   const counts = useMemo(() => {
     const result: Record<RedemptionStatus, number> = { SUCCESS: 0, FAILED: 0 };
@@ -142,25 +152,31 @@ export function RedemptionTab({ data, onOpenCustomer }: RedemptionTabProps) {
                   <TableHead className="w-16">ID</TableHead>
                   <TableHead>Khách hàng</TableHead>
                   <TableHead>Mã voucher</TableHead>
-                  <TableHead>IP</TableHead>
-                  <TableHead>Thiết bị</TableHead>
                   <TableHead className="text-right">Đơn gốc</TableHead>
                   <TableHead className="text-right">Giảm</TableHead>
                   <TableHead className="text-right">Thanh toán</TableHead>
                   <TableHead>Trạng thái</TableHead>
                   <TableHead>Thời gian</TableHead>
+                  <TableHead className="text-right">Chi tiết</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pageItems.map((r) => (
-                  <TableRow key={r.id}>
+                  <TableRow
+                    key={r.id}
+                    className="cursor-pointer"
+                    onClick={() => setSelected(r)}
+                  >
                     <TableCell className="font-mono text-xs tabular-nums">
                       #{r.id}
                     </TableCell>
                     <TableCell>
                       <button
                         type="button"
-                        onClick={() => onOpenCustomer(r.customerId)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenCustomer(r.customerId);
+                        }}
                         className="font-mono text-sm font-semibold text-primary hover:underline"
                       >
                         {r.customerId}
@@ -168,12 +184,6 @@ export function RedemptionTab({ data, onOpenCustomer }: RedemptionTabProps) {
                     </TableCell>
                     <TableCell className="font-mono text-sm">
                       {codeOf(r.voucherId)}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {r.ipAddress ?? "—"}
-                    </TableCell>
-                    <TableCell className="max-w-[10rem] truncate font-mono text-xs">
-                      {r.deviceFingerprint ?? "—"}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-right text-sm tabular-nums">
                       {formatVnd(r.originalAmount)}
@@ -187,19 +197,21 @@ export function RedemptionTab({ data, onOpenCustomer }: RedemptionTabProps) {
                       {formatVnd(r.finalAmount)}
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-1">
-                        <Badge variant={STATUS_META[r.status].variant}>
-                          {STATUS_META[r.status].label}
-                        </Badge>
-                        {r.failureReason ? (
-                          <p className="max-w-[12rem] text-xs text-destructive">
-                            {r.failureReason}
-                          </p>
-                        ) : null}
-                      </div>
+                      <Badge variant={STATUS_META[r.status].variant}>
+                        {STATUS_META[r.status].label}
+                      </Badge>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-sm">
                       {formatDateTime(r.createAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Xem chi tiết log #${r.id}`}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -215,6 +227,14 @@ export function RedemptionTab({ data, onOpenCustomer }: RedemptionTabProps) {
           onPageChange={setPage}
         />
       </Card>
+
+      <RedemptionDetailDialog
+        log={selected}
+        voucher={selected ? voucherById.get(selected.voucherId) : undefined}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+      />
     </div>
   );
 }

@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, Plus, Search, ShieldOff } from "lucide-react";
+import {
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  Shield,
+  ShieldOff,
+  Eye,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +39,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { deactivateBlacklist } from "@/lib/api/fraud";
+import { BlacklistDetailDialog } from "@/components/customers/blacklist-detail-dialog";
+import { BlacklistEditDialog } from "@/components/customers/blacklist-edit-dialog";
+import { setBlacklistActive } from "@/lib/api/fraud";
 import {
   BLACKLIST_TYPES,
   type BlackListResponse,
@@ -39,29 +49,28 @@ import {
 import { formatDateTime } from "@/lib/campaigns/format";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
-import {
-  BLACKLIST_TYPE_LABEL,
-  isBlacklistActive,
-  type SecurityData,
-} from "./security-meta";
+import { BLACKLIST_TYPE_LABEL, type SecurityData } from "./security-meta";
 
 const PAGE_SIZE = 10;
 const ALL = "ALL";
 
-type BlockState = "ACTIVE" | "INACTIVE" | "EXPIRED";
+type BlockState = "ACTIVE" | "INACTIVE";
 
 const STATE_META: Record<
   BlockState,
-  { label: string; variant: "destructive" | "muted" | "warning" }
+  { label: string; variant: "destructive" | "muted" }
 > = {
   ACTIVE: { label: "Đang chặn", variant: "destructive" },
   INACTIVE: { label: "Đã gỡ chặn", variant: "muted" },
-  EXPIRED: { label: "Hết hạn", variant: "warning" },
 };
 
 function stateOf(b: BlackListResponse): BlockState {
-  if (!b.isActive) return "INACTIVE";
-  return isBlacklistActive(b) ? "ACTIVE" : "EXPIRED";
+  return b.isActive ? "ACTIVE" : "INACTIVE";
+}
+
+interface PendingToggle {
+  item: BlackListResponse;
+  mode: "DEACTIVATE" | "REACTIVATE";
 }
 
 interface BlacklistTabProps {
@@ -81,7 +90,9 @@ export function BlacklistTab({
   const [typeFilter, setTypeFilter] = useState(ALL);
   const [stateFilter, setStateFilter] = useState(ALL);
   const [page, setPage] = useState(1);
-  const [target, setTarget] = useState<BlackListResponse | null>(null);
+  const [pending, setPending] = useState<PendingToggle | null>(null);
+  const [detail, setDetail] = useState<BlackListResponse | null>(null);
+  const [editing, setEditing] = useState<BlackListResponse | null>(null);
   const [busy, setBusy] = useState(false);
 
   const filtered = useMemo(() => {
@@ -107,22 +118,30 @@ export function BlacklistTab({
   const safePage = clampPage(page, pageCount);
   const pageItems = paginate(filtered, safePage, PAGE_SIZE);
 
-  async function confirmDeactivate() {
-    if (!target) return;
+  async function confirmToggle() {
+    if (!pending) return;
+    const isActive = pending.mode === "REACTIVATE";
     setBusy(true);
     try {
-      const updated = await deactivateBlacklist(target.id);
+      const updated = await setBlacklistActive(pending.item.id, isActive);
       onUpdated(updated);
-      toast.success("Đã gỡ chặn");
-      setTarget(null);
+      toast.success(isActive ? "Đã chặn lại" : "Đã gỡ chặn");
+      setPending(null);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Không gỡ chặn được, thử lại sau.",
+        err instanceof Error
+          ? err.message
+          : isActive
+            ? "Không chặn lại được, thử lại sau."
+            : "Không gỡ chặn được, thử lại sau.",
       );
     } finally {
       setBusy(false);
     }
   }
+
+  const pendingItem = pending?.item ?? null;
+  const reactivating = pending?.mode === "REACTIVATE";
 
   return (
     <div className="space-y-4">
@@ -203,11 +222,11 @@ export function BlacklistTab({
                   <TableHead className="w-16">ID</TableHead>
                   <TableHead>Loại</TableHead>
                   <TableHead>Giá trị</TableHead>
-                  <TableHead>Lý do</TableHead>
                   <TableHead>Trạng thái</TableHead>
                   <TableHead>Hết hạn</TableHead>
-                  <TableHead>Tạo lúc</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
+                  <TableHead className="whitespace-nowrap text-center">
+                    Thao tác
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -234,9 +253,6 @@ export function BlacklistTab({
                           b.value
                         )}
                       </TableCell>
-                      <TableCell className="max-w-xs truncate text-sm">
-                        {b.reason ?? "—"}
-                      </TableCell>
                       <TableCell>
                         <Badge variant={STATE_META[state].variant}>
                           {STATE_META[state].label}
@@ -247,20 +263,50 @@ export function BlacklistTab({
                           ? formatDateTime(b.expiredAt)
                           : "Vĩnh viễn"}
                       </TableCell>
-                      <TableCell className="text-sm">
-                        {formatDateTime(b.createAt)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {b.isActive ? (
+                      <TableCell className="whitespace-nowrap text-center">
+                        <div className="flex justify-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setDetail(b)}
+                            aria-label={`Xem chi tiết bản ghi #${b.id}`}
+                          >
+                            <Eye />
+                            Chi tiết
+                          </Button>
+                          {state === "ACTIVE" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setPending({ item: b, mode: "DEACTIVATE" })
+                              }
+                            >
+                              <ShieldOff />
+                              Gỡ chặn
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setPending({ item: b, mode: "REACTIVATE" })
+                              }
+                            >
+                              <Shield />
+                              Chặn lại
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => setTarget(b)}
+                            onClick={() => setEditing(b)}
+                            aria-label={`Sửa bản ghi #${b.id}`}
                           >
-                            <ShieldOff />
-                            Gỡ chặn
+                            <Pencil />
+                            Sửa
                           </Button>
-                        ) : null}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -279,33 +325,60 @@ export function BlacklistTab({
       </Card>
 
       <Dialog
-        open={!!target}
-        onOpenChange={(o) => !busy && !o && setTarget(null)}
+        open={!!pending}
+        onOpenChange={(o) => !busy && !o && setPending(null)}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Gỡ chặn bản ghi #{target?.id}?</DialogTitle>
+            <DialogTitle>
+              {reactivating
+                ? `Chặn lại bản ghi #${pendingItem?.id}?`
+                : `Gỡ chặn bản ghi #${pendingItem?.id}?`}
+            </DialogTitle>
             <DialogDescription>
-              {target
-                ? `${BLACKLIST_TYPE_LABEL[target.type]} ${target.value} sẽ áp dụng được mã giảm giá trở lại.`
+              {pendingItem
+                ? reactivating
+                  ? `${BLACKLIST_TYPE_LABEL[pendingItem.type]} ${pendingItem.value} sẽ bị chặn áp mã trở lại.`
+                  : `${BLACKLIST_TYPE_LABEL[pendingItem.type]} ${pendingItem.value} sẽ áp dụng được mã giảm giá trở lại.`
                 : null}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button
               variant="secondary"
-              onClick={() => setTarget(null)}
+              onClick={() => setPending(null)}
               disabled={busy}
             >
               Hủy bỏ
             </Button>
-            <Button onClick={confirmDeactivate} disabled={busy}>
-              {busy ? <Loader2 className="animate-spin" /> : <ShieldOff />}
-              Xác nhận gỡ chặn
+            <Button onClick={confirmToggle} disabled={busy}>
+              {busy ? (
+                <Loader2 className="animate-spin" />
+              ) : reactivating ? (
+                <Shield />
+              ) : (
+                <ShieldOff />
+              )}
+              {reactivating ? "Xác nhận chặn lại" : "Xác nhận gỡ chặn"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BlacklistDetailDialog
+        item={detail}
+        onOpenChange={(open) => {
+          if (!open) setDetail(null);
+        }}
+      />
+      <BlacklistEditDialog
+        key={editing?.id ?? "none"}
+        item={editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+        onSaved={onUpdated}
+      />
     </div>
   );
 }

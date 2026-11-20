@@ -51,51 +51,39 @@ export interface WalletPreview {
 
 const n = (c: Config, key: string): number => Number(c[key] ?? 0);
 
-// Lấy quy tắc của các voucher khách đang có
-export async function loadWalletRules(
-  voucherIds: Set<number>,
+// Mã đưa vào bước thanh toán: mã GENERIC còn lượt (dùng trực tiếp) và mã BULK khách đang có trong kho.
+// VoucherResponse đã có reward và condition nên chỉ cần một lần gọi GET vouchers.
+export async function loadCheckoutRules(
+  ownedBulkVoucherIds: Set<number>,
 ): Promise<WalletRule[]> {
-  if (voucherIds.size === 0) return [];
-  const [vouchers, batches, batchRules, rewards, conditions] =
-    await Promise.all([
-      listVouchers(),
-      listVoucherBatches(),
-      listBatchRules(),
-      listRewards(),
-      listConditions(),
-    ]);
-
-  const batchById = new Map(batches.map((b) => [b.id, b]));
-  const ruleById = new Map(batchRules.map((r) => [r.id, r]));
-  const rewardById = new Map(rewards.map((r) => [r.id, r]));
-  const conditionById = new Map(conditions.map((c) => [c.id, c]));
+  const vouchers = await listVouchers();
 
   return vouchers.flatMap((v) => {
-    if (!voucherIds.has(v.id)) return [];
-    const batch = batchById.get(v.batchId);
-    const rule = batch ? ruleById.get(batch.ruleId) : undefined;
-    const reward = rule ? rewardById.get(rule.rewardId) : undefined;
-    const condition = rule ? conditionById.get(rule.conditionId) : undefined;
-    if (!reward || !condition) return [];
+    const isGeneric = v.batch.batchType === "GENERIC";
+    const usable = isGeneric
+      ? v.batch.redeemedCount < v.batch.maxUsageCount
+      : ownedBulkVoucherIds.has(v.id);
+    if (!usable || v.campaign.status !== "ACTIVE") return [];
+
+    const rewardConfig = (v.reward.config ?? {}) as Config;
+    const conditionConfig = (v.condition.config ?? {}) as Config;
+    const conditionType = v.condition.type as ConditionType;
 
     return [
       {
         code: v.code,
-        rewardName: reward.name,
-        rewardType: reward.rewardType,
-        rewardConfig: reward.config as Config,
-        conditionType: condition.conditionType,
-        conditionConfig: condition.config as Config,
-        conditionName: condition.name,
-        conditionLines: describeCondition(
-          condition.conditionType,
-          condition.config,
-        ),
-        headline: summarizeConfig("REWARD", reward.rewardType, reward.config),
+        rewardName: v.reward.name,
+        rewardType: v.reward.type as RewardType,
+        rewardConfig,
+        conditionType,
+        conditionConfig,
+        conditionName: v.condition.name,
+        conditionLines: describeCondition(conditionType, conditionConfig),
+        headline: summarizeConfig("REWARD", v.reward.type, rewardConfig),
         condition: summarizeConfig(
           "CONDITION",
-          condition.conditionType,
-          condition.config,
+          v.condition.type,
+          conditionConfig,
         ),
       },
     ];

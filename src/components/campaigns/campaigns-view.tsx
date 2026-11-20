@@ -86,7 +86,6 @@ export function CampaignsView() {
   async function changeStatus(
     campaign: CampaignView,
     next: "ACTIVE" | "PAUSED",
-    notifyWebhook = false,
   ) {
     setBusyId(campaign.id);
     try {
@@ -99,9 +98,7 @@ export function CampaignsView() {
           ? "Đã tạm dừng chiến dịch"
           : "Đã kích hoạt chiến dịch",
         {
-          description: notifyWebhook
-            ? "Đã gửi thông báo webhook tới các kênh đối tác."
-            : updated.name,
+          description: updated.name,
         },
       );
     } catch (err) {
@@ -221,9 +218,9 @@ export function CampaignsView() {
         onOpenChange={(open) => {
           if (!open) setPauseTarget(null);
         }}
-        onConfirm={async (notify) => {
+        onConfirm={async () => {
           if (!pauseTarget) return;
-          await changeStatus(pauseTarget, "PAUSED", notify);
+          await changeStatus(pauseTarget, "PAUSED");
           setPauseTarget(null);
         }}
       />

@@ -1,5 +1,5 @@
 // BE: GET/POST /fraud-logs, GET /fraud-logs/{id}; GET/POST /black-lists, GET /black-lists/{id},
-// PATCH /black-lists/{id} (chỉ vô hiệu hóa, không nhận body).
+// PATCH /black-lists/{id} (cập nhật isActive).
 // BE không có tham số lọc trên list, nên lọc ở client.
 import type {
   BlackListCreateRequest,
@@ -70,9 +70,33 @@ export function createBlacklist(
   });
 }
 
-// BE: PATCH /black-lists/{id} chỉ đặt isActive = false
-export function deactivateBlacklist(id: number): Promise<BlackListResponse> {
+// BE: PATCH /black-lists/{id} nhận body, chỉ cập nhật các trường được gửi lên.
+// isActive = false: gỡ chặn; isActive = true: chặn lại.
+export function setBlacklistActive(
+  id: number,
+  isActive: boolean,
+): Promise<BlackListResponse> {
   return adminRequest<BlackListResponse>(`black-lists/${id}`, {
     method: "PATCH",
+    body: { isActive },
+  });
+}
+
+// BE: PATCH /black-lists/{id} cập nhật các trường được gửi lên (partial update)
+export interface BlacklistUpdateRequest {
+  blacklistType?: BlacklistType;
+  targetValue?: string;
+  reason?: string;
+  expiredAt?: string | null;
+  isActive?: boolean;
+}
+
+export function updateBlacklist(
+  id: number,
+  req: BlacklistUpdateRequest,
+): Promise<BlackListResponse> {
+  return adminRequest<BlackListResponse>(`black-lists/${id}`, {
+    method: "PATCH",
+    body: req,
   });
 }

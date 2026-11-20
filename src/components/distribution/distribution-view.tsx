@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, RefreshCw, Search } from "lucide-react";
-import { SendDistributionDialog } from "@/components/distribution/send-distribution-dialog";
+import {
+  SendDistributionDialog,
+  type BulkSendRequest,
+} from "@/components/distribution/send-distribution-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +29,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { listDistributionLogs } from "@/lib/api/distribution";
+import {
+  createDistributionLog,
+  listDistributionLogs,
+} from "@/lib/api/distribution";
 import { listVouchers } from "@/lib/api/vouchers";
 import {
   DISTRIBUTION_STATUSES,
@@ -39,6 +45,7 @@ import { listCampaigns } from "@/lib/campaigns/service";
 import type { CampaignView } from "@/lib/campaigns/types";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
+import { toast } from "sonner";
 
 const PAGE_SIZE = 10;
 const ALL = "ALL";
@@ -68,6 +75,57 @@ export function DistributionView() {
   const [page, setPage] = useState(1);
   const [sendOpen, setSendOpen] = useState(false);
   const [sendSeq, setSendSeq] = useState(0);
+
+  const bulkRunning = useRef(false);
+
+  // Gửi tuần tự từng địa chỉ ở nền; mỗi bản ghi thêm vào danh sách ngay khi BE trả về
+  async function runBulkSend(req: BulkSendRequest) {
+    if (bulkRunning.current) {
+      toast.warning("Đang có một đợt gửi hàng loạt, vui lòng chờ");
+      return;
+    }
+    bulkRunning.current = true;
+    const label = DISTRIBUTION_LABEL[req.channel];
+    const total = req.targets.length;
+    const toastId = toast.loading(`Đang gửi 0/${total} mã qua ${label}...`);
+    let sent = 0;
+    let failed = 0;
+    let lastError = "";
+
+    try {
+      for (const address of req.targets) {
+        try {
+          const log = await createDistributionLog({
+            batchId: req.batchId,
+            campaignId: req.campaignId,
+            channel: req.channel,
+            targetAddress: address,
+          });
+          sent += 1;
+          setData((prev) =>
+            prev ? { ...prev, logs: [...prev.logs, log] } : prev,
+          );
+        } catch (err) {
+          failed += 1;
+          lastError = err instanceof Error ? err.message : "";
+        }
+        toast.loading(`Đang gửi ${sent + failed}/${total} mã qua ${label}...`, {
+          id: toastId,
+        });
+      }
+    } finally {
+      bulkRunning.current = false;
+    }
+
+    if (failed === 0) {
+      toast.success(`Đã gửi ${sent} mã qua ${label}`, { id: toastId });
+    } else {
+      toast.error(`Gửi xong: ${sent} thành công, ${failed} thất bại`, {
+        id: toastId,
+        description: lastError || undefined,
+      });
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -106,7 +164,7 @@ export function DistributionView() {
       const matchStatus = statusFilter === ALL || l.status === statusFilter;
       const matchCampaign =
         campaignFilter === ALL ||
-        String(voucher?.campaignId) === campaignFilter;
+        String(voucher?.campaign.id) === campaignFilter;
       const matchText = matchesSearch(q, l.targetAddress, voucher?.code);
       return matchStatus && matchCampaign && matchText;
     });
@@ -274,7 +332,7 @@ export function DistributionView() {
                           {voucher?.code ?? `#${l.voucherId}`}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {campaignName(voucher?.campaignId)}
+                          {campaignName(voucher?.campaign.id)}
                         </TableCell>
                         <TableCell className="text-sm">
                           {DISTRIBUTION_LABEL[l.channel]}
@@ -315,6 +373,7 @@ export function DistributionView() {
             prev ? { ...prev, logs: [...prev.logs, log] } : prev,
           )
         }
+        onBulkSend={runBulkSend}
       />
     </div>
   );

@@ -3,6 +3,7 @@
 import { ActivateBatchDialog } from "@/components/campaigns/activate-batch-dialog";
 import { BatchEditDialog } from "@/components/campaigns/batch-edit-dialog";
 import { CampaignStatusBadge } from "@/components/campaigns/campaign-status-badge";
+import { EndCampaignDialog } from "@/components/campaigns/end-campaign-dialog";
 import { PauseCampaignDialog } from "@/components/campaigns/pause-campaign-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,8 +58,8 @@ import {
   MoreHorizontal,
   Pause,
   Pencil,
-  Play,
   Rocket,
+  StopCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
@@ -71,6 +72,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
+  const [endOpen, setEndOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [batchPage, setBatchPage] = useState(1);
 
@@ -78,6 +80,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
   const [activateBatch, setActivateBatch] =
     useState<VoucherBatchResponse | null>(null);
   const [activating, setActivating] = useState(false);
+  const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -109,10 +112,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
     }
   }
 
-  async function changeStatus(
-    next: "ACTIVE" | "PAUSED",
-    notifyWebhook = false,
-  ) {
+  async function changeStatus(next: "ACTIVE" | "PAUSED" | "ENDED") {
     if (!campaign) return;
     setBusy(true);
     try {
@@ -121,12 +121,9 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
       toast.success(
         next === "PAUSED"
           ? "Đã tạm dừng chiến dịch"
-          : "Đã kích hoạt chiến dịch",
-        {
-          description: notifyWebhook
-            ? "Đã gửi thông báo webhook tới các kênh đối tác."
-            : undefined,
-        },
+          : next === "ENDED"
+            ? "Đã kết thúc chiến dịch"
+            : "Đã kích hoạt chiến dịch",
       );
     } catch (err) {
       toast.error("Không cập nhật được trạng thái", {
@@ -135,23 +132,52 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
     } finally {
       setBusy(false);
       setPauseOpen(false);
+      setEndOpen(false);
     }
   }
 
   async function confirmActivate() {
     if (!activateBatch) return;
+    const batchId = activateBatch.id;
     setActivating(true);
     try {
-      const updated = await activateCampaignBatch(activateBatch.id);
-      toast.success(`Đã kích hoạt tạo mã cho lô #${updated.id}`);
+      await activateCampaignBatch(batchId);
       setActivateBatch(null);
-      await reload();
+      setGeneratingIds((prev) => new Set(prev).add(batchId));
+      toast.info(`Đang sinh mã cho lô #${batchId}`);
+      void waitForGeneration(batchId);
     } catch (err) {
       toast.error("Không kích hoạt được lô mã", {
         description: err instanceof Error ? err.message : undefined,
       });
     } finally {
       setActivating(false);
+    }
+  }
+
+  // BE sinh mã nền và không có trạng thái trung gian, nên FE hỏi lại cho đến khi lô là GENERATED (tối đa 60 giây)
+  async function waitForGeneration(batchId: number) {
+    const deadline = Date.now() + 60_000;
+    try {
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const c = await getCampaign(campaignId);
+        if (!c) break;
+        setCampaign(c);
+        if (c.batches.find((b) => b.id === batchId)?.status === "GENERATED") {
+          toast.success(`Đã sinh xong mã cho lô #${batchId}`);
+          return;
+        }
+      }
+      toast.warning(`Lô #${batchId} chưa sinh xong, vui lòng tải lại sau`);
+    } catch {
+      toast.error("Không kiểm tra được trạng thái lô");
+    } finally {
+      setGeneratingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(batchId);
+        return next;
+      });
     }
   }
 
@@ -225,12 +251,14 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href={`/admin/campaigns/${campaign.id}/edit`}>
-              <Pencil />
-              Chỉnh sửa
-            </Link>
-          </Button>
+          {campaign.status !== "ENDED" && (
+            <Button asChild variant="outline">
+              <Link href={`/admin/campaigns/${campaign.id}/edit`}>
+                <Pencil />
+                Chỉnh sửa
+              </Link>
+            </Button>
+          )}
           {campaign.status === "ACTIVE" && (
             <Button
               variant="outline"
@@ -242,16 +270,20 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
               Tạm dừng
             </Button>
           )}
-          {campaign.status === "PAUSED" && (
-            <Button onClick={() => changeStatus("ACTIVE")} disabled={busy}>
-              {busy ? <Loader2 className="animate-spin" /> : <Play />}
-              Tiếp tục
-            </Button>
-          )}
-          {campaign.status === "DRAFT" && (
+          {(campaign.status === "DRAFT" || campaign.status === "PAUSED") && (
             <Button onClick={() => changeStatus("ACTIVE")} disabled={busy}>
               {busy ? <Loader2 className="animate-spin" /> : <Rocket />}
               Kích hoạt
+            </Button>
+          )}
+          {(campaign.status === "ACTIVE" || campaign.status === "PAUSED") && (
+            <Button
+              variant="destructive"
+              onClick={() => setEndOpen(true)}
+              disabled={busy}
+            >
+              <StopCircle />
+              Kết thúc
             </Button>
           )}
         </div>
@@ -341,7 +373,8 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
             </TableHeader>
             <TableBody>
               {batchItems.map((b) => {
-                const editable = b.status === "DRAFT";
+                const generating = generatingIds.has(b.id);
+                const editable = b.status === "DRAFT" && !generating;
                 const batchPct =
                   b.maxUsageCount === 0
                     ? 0
@@ -351,7 +384,9 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                     <TableCell className="font-mono text-xs font-semibold">
                       #{b.id}
                       <p className="font-sans text-xs font-normal text-muted-foreground">
-                        {BATCH_STATUS_LABEL[b.status]}
+                        {generating
+                          ? "Đang sinh mã…"
+                          : BATCH_STATUS_LABEL[b.status]}
                       </p>
                     </TableCell>
                     <TableCell className="text-sm">
@@ -433,6 +468,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                               variant="ghost"
                               size="icon"
                               aria-label={`Thao tác lô #${b.id}`}
+                              disabled={generating}
                             >
                               <MoreHorizontal />
                             </Button>
@@ -449,7 +485,7 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem disabled>
-                                Đã sinh mã
+                                {generating ? "Đang sinh mã…" : "Đã sinh mã"}
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
@@ -496,7 +532,13 @@ export function CampaignDetail({ campaignId }: { campaignId: number }) {
         campaign={pauseOpen ? campaign : null}
         busy={busy}
         onOpenChange={setPauseOpen}
-        onConfirm={(notify) => changeStatus("PAUSED", notify)}
+        onConfirm={() => changeStatus("PAUSED")}
+      />
+      <EndCampaignDialog
+        campaign={endOpen ? campaign : null}
+        busy={busy}
+        onOpenChange={setEndOpen}
+        onConfirm={() => changeStatus("ENDED")}
       />
     </div>
   );

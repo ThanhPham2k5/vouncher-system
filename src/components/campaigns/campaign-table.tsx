@@ -177,7 +177,7 @@ export function CampaignTable({
                       )}
                       {c.status === "ENDED" && (
                         <DropdownMenuItem disabled>
-                          Chiến dịch đã hết hạn
+                          Chiến dịch đã kết thúc
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>

@@ -16,7 +16,6 @@ import {
 } from "@/lib/api/vouchers";
 import type { CustomerVoucherResponse } from "@/lib/campaigns/be-types";
 import { formatDateTime } from "@/lib/campaigns/format";
-import { listCampaigns } from "@/lib/campaigns/service";
 import { clampPage, pageCountOf, paginate } from "@/lib/pagination";
 import { matchesSearch, normalizeSearch } from "@/lib/search";
 import {
@@ -89,7 +88,7 @@ export function WalletView({ customerId }: WalletViewProps) {
       const ids = new Set(owned.map((w) => w.voucherId));
       const infos =
         ids.size > 0
-          ? await describeVouchers(
+          ? describeVouchers(
               (await listVouchers()).filter((v) => ids.has(v.id)),
             )
           : [];
@@ -151,9 +150,13 @@ export function WalletView({ customerId }: WalletViewProps) {
     setImporting(true);
     try {
       const voucher = await getVoucherByCode(code);
-      const campaigns = await listCampaigns();
-      const campaign = campaigns.find((c) => c.id === voucher.campaignId);
-      if (campaign?.status !== "ACTIVE") {
+      if (voucher.batch.batchType !== "BULK") {
+        toast.error("Không thể import mã", {
+          description: "Kho mã chỉ nhận mã thuộc lô BULK",
+        });
+        return;
+      }
+      if (voucher.campaign.status !== "ACTIVE") {
         toast.error("Không thể import mã", {
           description: "Mã thuộc chiến dịch không còn hoạt động",
         });
@@ -164,7 +167,7 @@ export function WalletView({ customerId }: WalletViewProps) {
         voucherId: voucher.id,
       });
       setWallet((prev) => [...(prev ?? []), created]);
-      const [info] = await describeVouchers([voucher]);
+      const [info] = describeVouchers([voucher]);
       if (info) setCatalog((prev) => [...prev, info]);
       setImportCode("");
       toast.success("Đã thêm mã vào kho", { description: code });
@@ -345,16 +348,10 @@ export function WalletView({ customerId }: WalletViewProps) {
                       </span>
                     </div>
 
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1"
-                        onClick={() => copyCode(w.voucherCode)}
-                      >
-                        <Copy className="h-4 w-4" />
-                        Dùng ngay
-                      </Button>
+                    <div className="flex">
                       <Button
                         variant="outline"
+                        className="w-full"
                         disabled={deletingId === w.id}
                         onClick={() => handleDelete(w)}
                         aria-label={`Xóa mã ${w.voucherCode}`}

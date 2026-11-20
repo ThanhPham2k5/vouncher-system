@@ -256,9 +256,25 @@ export interface BatchRuleUpdateRequest {
 // ---- Vouchers ----
 export interface VoucherResponse {
   id: number;
-  batchId: number;
-  campaignId: number;
   code: string;
+  createdAt: string;
+  campaign: {
+    id: number;
+    name: string;
+    status: CampaignStatus;
+    startTime: string;
+    endTime: string;
+  };
+  batch: {
+    id: number;
+    batchType: BatchType;
+    status: BatchStatus;
+    generatedCount: number;
+    maxUsageCount: number;
+    redeemedCount: number;
+  };
+  reward: { name: string; type: string; config: unknown };
+  condition: { name: string; type: string; config: unknown };
 }
 
 export interface CustomerVoucherResponse {
